@@ -4,34 +4,7 @@ Per-request token usage tracking with per-model cost estimation.
 
 from dataclasses import dataclass, field
 
-# USD per million tokens  {model_prefix: (input, output)}
-_MODEL_PRICING: dict[str, tuple[float, float]] = {
-    # (base_input_tokens_usd_per_mtok, output_tokens_usd_per_mtok)
-    "claude-opus-4.6": (5.00, 25.00),
-    "claude-opus-4.5": (5.00, 25.00),
-
-    "claude-opus-4.1": (15.00, 75.00),
-    "claude-opus-4":   (15.00, 75.00),
-    "claude-opus-3":   (15.00, 75.00),  # deprecated
-
-    "claude-sonnet-4.6": (3.00, 15.00),
-    "claude-sonnet-4.5": (3.00, 15.00),
-    "claude-sonnet-4":   (3.00, 15.00),
-    "claude-sonnet-3.7": (3.00, 15.00),  # deprecated
-
-    "claude-haiku-4.5": (1.00, 5.00),
-    "claude-haiku-3.5": (0.80, 4.00),
-    "claude-haiku-3":   (0.25, 1.25),
-}
-
-_DEFAULT_PRICING = _MODEL_PRICING["claude-sonnet-4.6"]
-
-
-def _get_pricing(model: str) -> tuple[float, float]:
-    for prefix, pricing in _MODEL_PRICING.items():
-        if model.startswith(prefix):
-            return pricing
-    return _DEFAULT_PRICING
+from src.agent.runner.models import pricing as _get_pricing
 
 
 @dataclass

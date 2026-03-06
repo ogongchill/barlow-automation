@@ -1,9 +1,9 @@
 """
-GitHub-capable agent.
-Includes read-only GitHub MCP tools when GITHUB_TOKEN is configured.
+GitHub-capable agent (Claude). Read-only GitHub MCP tools.
 """
 
-from src.agent.base import AgentConfig
+from src.agent.base import IAgent
+from src.agent.runner.claude import ClaudeAgentConfig, ClaudeAgent
 from src.agent.tools import build_server
 from src.config import config
 
@@ -35,7 +35,7 @@ _GITHUB_READ_TOOLS = [
 ]
 
 
-def create() -> AgentConfig:
+def create() -> IAgent:
     mcp_servers = {"local": build_server()}
     allowed_tools = list(_LOCAL_TOOLS)
 
@@ -48,9 +48,9 @@ def create() -> AgentConfig:
         }
         allowed_tools.extend(_GITHUB_READ_TOOLS)
 
-    return AgentConfig(
-        name="github",
+    cfg = ClaudeAgentConfig(
         system_prompt=SYSTEM_PROMPT,
         allowed_tools=allowed_tools,
         mcp_servers=mcp_servers,
     )
+    return ClaudeAgent("github", cfg)

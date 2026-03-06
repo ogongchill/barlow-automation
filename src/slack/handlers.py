@@ -2,7 +2,7 @@ import logging
 
 from slack_bolt.async_app import AsyncApp
 
-from src.agent.base import AgentConfig, run
+from src.agent.base import IAgent
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ def _build_reply(user: str | None, response: str, usage_text: str) -> str:
     return f"{base}\n\n```{usage_text}```"
 
 
-def register_handlers(app: AsyncApp, agent: AgentConfig) -> None:
+def register_handlers(app: AsyncApp, agent: IAgent) -> None:
     @app.event("app_mention")
     async def handle_mention(event: dict, say) -> None:
         user = event.get("user", "unknown")
@@ -26,7 +26,7 @@ def register_handlers(app: AsyncApp, agent: AgentConfig) -> None:
         await say(f"<@{user}> 처리 중...")
 
         try:
-            response, usage = await run(agent, user_message)
+            response, usage = await agent.run(user_message)
             logger.info("mention | user=%s response_len=%d", user, len(response))
             await say(_build_reply(user, response, usage.format()))
         except Exception:
@@ -45,7 +45,7 @@ def register_handlers(app: AsyncApp, agent: AgentConfig) -> None:
         await say(f"<@{user}> 처리 중...")
 
         try:
-            response, usage = await run(agent, text)
+            response, usage = await agent.run(text)
             logger.info("dm | user=%s response_len=%d", user, len(response))
             await say(_build_reply(None, response, usage.format()))
         except Exception:
