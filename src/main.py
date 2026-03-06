@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 from src.config import config
 from src.slack.app import create_app
 from src.agent.agents import github, general
+from src.session.manager import InMemorySessionManager
 
 
 async def main() -> None:
@@ -23,7 +24,9 @@ async def main() -> None:
     agent = github.create() if config.github_token else general.create()
     logger.info("agent: %s", agent.name)
 
-    _, handler = create_app(agent)
+    session_manager = InMemorySessionManager()
+
+    _, handler = create_app(agent, session_manager)
     await handler.start_async()
 
 
