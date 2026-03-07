@@ -11,17 +11,15 @@ setup_logging()
 
 logger = logging.getLogger(__name__)
 
-from src.config import config
 from src.slack.app import create_app
-from src.agent.agents import github, general
+from src.agent.agents import github_openai
 from src.session.manager import InMemorySessionManager
 
 
 async def main() -> None:
     logger.info("Barlow automation bot starting (Socket Mode)...")
-    logger.info("GitHub MCP: %s", "enabled" if config.github_token else "disabled")
 
-    agent = github.create() if config.github_token else general.create()
+    agent = github_openai.create()
     logger.info("agent: %s", agent.name)
 
     session_manager = InMemorySessionManager()

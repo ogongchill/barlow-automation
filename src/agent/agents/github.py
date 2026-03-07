@@ -3,7 +3,7 @@ GitHub-capable agent (Claude). Read-only GitHub MCP tools.
 """
 
 from src.agent.base import IAgent
-from src.agent.runner.claude import ClaudeAgentConfig, ClaudeAgent
+# from src.agent.runner.claude import ClaudeAgentConfig, ClaudeAgent
 from src.agent.tools import build_server
 from src.config import config
 
@@ -48,9 +48,9 @@ def create() -> IAgent:
         }
         allowed_tools.extend(_GITHUB_READ_TOOLS)
 
-    cfg = ClaudeAgentConfig(
-        system_prompt=SYSTEM_PROMPT,
-        allowed_tools=allowed_tools,
-        mcp_servers=mcp_servers,
-    )
-    return ClaudeAgent("github", cfg)
+    # cfg = ClaudeAgentConfig(
+    #     system_prompt=SYSTEM_PROMPT,
+    #     allowed_tools=allowed_tools,
+    #     mcp_servers=mcp_servers,
+    # )
+    # return ClaudeAgent("github", cfg)
