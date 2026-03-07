@@ -1,33 +1,19 @@
 """
 GitHub 분석 workflow를 위한 OpenAI multi-agent 구성.
 
-entry → orchestrator → [reader_planner, code_reader, spec_gen]
-spec_gen → orchestrator (순환 참조: create() 내부에서 패치)
+orchestrator → Runner.run() → [reader_planner, code_reader, spec_gen]
 """
 
 from agents import Agent
-from agents.mcp import MCPServerStdio, MCPServerStreamableHttp, MCPServerStreamableHttpParams
+from agents.mcp import MCPServer
 
-from src.config import config, OsType
 from src.agent.runner.models import Model
-from src.agent.runner.openai import OpenAIAgent
+from src.agent.runner.openai import OrchestratorAgent
 import src.agent.agents.github as github_mcp
 
-_INIT_PROMPT = """
-너는 GitHub 분석 workflow의 entry agent이다.
 
-사용자 요청이 들어오면 직접 분석하지 말고
-항상 orchestrator agent에게 작업을 위임한다.
-
-규칙
-- 저장소 분석을 직접 수행하지 않는다
-- spec을 직접 작성하지 않는다
-- 항상 orchestrator agent에게 handoff 한다
-"""
-
-
-def create() -> OpenAIAgent:
-    """entry → orchestrator → sub-agents 구조로 OpenAIAgent를 생성한다."""
+def create() -> OrchestratorAgent:
+    """orchestrator가 Runner.run()으로 sub-agents를 직접 호출하는 구조로 생성한다."""
     return OpenAiSdkAgents.create()
 
 
@@ -139,6 +125,8 @@ class OpenAiSdkAgents:
     - 실제 분석 결과를 쓰지 말고 탐색 계획만 쓴다.
     - 파일 내용이 아니라 탐색 전략을 산출한다.
     - 다음 agent가 바로 실행 가능한 수준으로 구체적으로 작성한다.
+
+    위 형식에 맞춰 탐색 계획을 출력한다.
     """
 
     _reader_prompt="""
@@ -217,6 +205,8 @@ class OpenAiSdkAgents:
 
     [handoff]
     spec agent가 참고해야 할 핵심 요약
+
+    위 형식에 맞춰 분석 결과를 출력한다.
     """
     
 
@@ -315,6 +305,8 @@ class OpenAiSdkAgents:
 
     *handoff*
     ticket / 구현 agent가 참고해야 할 핵심 요약
+
+    위 형식에 맞춰 변경 명세를 출력한다.
     """
     
     _orechestrator_prompt = """
@@ -365,72 +357,41 @@ class OpenAiSdkAgents:
     - 이전 단계 결과
     - 현재 단계 목표
     """
-
-    _npx_cmd = "npx.cmd" if config.os_type == OsType.WINDOWS else "npx"
-
-    @classmethod
-    def _github_mcp(cls) -> MCPServerStdio:
-        return MCPServerStdio(
-            params={
-                "command": cls._npx_cmd,
-                "args": ["-y", "@modelcontextprotocol/server-github"],
-                "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": config.github_token},
-            },
-            name="github",
-            cache_tools_list=True,
-            client_session_timeout_seconds=60,
-        )
     
     @classmethod
-    def _github_mcp(cls) -> MCPServerStdio:
+    def _github_mcp(cls) -> MCPServer:
         return github_mcp.GITHUB_REMOTE_MCP
 
     @classmethod
-    def create(cls) -> OpenAIAgent:
-        """entry → orchestrator → [reader_planner, code_reader, spec_gen] 구조로 생성.
-
-        spec_gen → orchestrator 순환 참조는 orchestrator 생성 후 패치한다.
-        """
+    def create(cls) -> OrchestratorAgent:
+        """orchestrator가 Runner.run()으로 sub-agents를 직접 호출하는 구조로 생성한다."""
         reader_planner = Agent(
             name="read_planner",
             instructions=cls._reader_planner_prompt,
             model=Model.GPT.GPT_5_2.name,
-            tool_use_behavior="run_llm_again"
         )
         reader = Agent(
             name="code_reader",
             instructions=cls._reader_prompt,
             model=Model.GPT.GPT_5_2.name,
             mcp_servers=[cls._github_mcp()],
-            tool_use_behavior="run_llm_again"
         )
         spec_gen = Agent(
             name="spec_gen",
             instructions=cls._spec_prompt,
             model=Model.GPT.GPT_5_2.name,
             mcp_servers=[cls._github_mcp()],
-            tool_use_behavior="run_llm_again"
         )
         orchestrator = Agent(
             name="orchestrator",
             instructions=cls._orechestrator_prompt,
             model=Model.GPT.GPT_5_2.name,
-            handoffs=[reader_planner, reader, spec_gen],
-            tool_use_behavior="run_llm_again"
         )
-
-        spec_gen.handoffs = [orchestrator]  # 순환 참조 패치
-        reader.handoffs = [orchestrator]
-        reader_planner.handoffs = [orchestrator]
-        reader_planner.tool_use_behavior
-
-        entry = Agent(
-            name="entry-agent",
-            instructions=_INIT_PROMPT,
-            model=Model.GPT.GPT_5_2.name,
-            handoffs=[orchestrator],
-        )
-
-        return OpenAIAgent("entry-agent", entry)
+        sub_agents = {
+            "read_planner": reader_planner,
+            "code_reader": reader,
+            "spec_gen": spec_gen,
+        }
+        return OrchestratorAgent("orchestrator", orchestrator, sub_agents)
 
 
