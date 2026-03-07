@@ -36,6 +36,8 @@ class Model:
     class GPT:
         CODEX_5_3 = ModelConfig("openai", "gpt-5.3-codex",      1.75, 14.00)
         GPT_5_4 = ModelConfig("openai", "gpt-5.4",              2.50, 15.00)
+        GPT_5_2 = ModelConfig("openai", "gpt-5.2",              1.75, 14.00)
+
 
         DEFAULT = GPT_5_4
 

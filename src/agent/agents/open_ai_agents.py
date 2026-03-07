@@ -6,12 +6,12 @@ spec_gen → orchestrator (순환 참조: create() 내부에서 패치)
 """
 
 from agents import Agent
-from agents.mcp import MCPServerStdio
+from agents.mcp import MCPServerStdio, MCPServerStreamableHttp, MCPServerStreamableHttpParams
 
 from src.config import config, OsType
 from src.agent.runner.models import Model
 from src.agent.runner.openai import OpenAIAgent
-
+import src.agent.agents.github as github_mcp
 
 _INIT_PROMPT = """
 너는 GitHub 분석 workflow의 entry agent이다.
@@ -380,6 +380,10 @@ class OpenAiSdkAgents:
             cache_tools_list=True,
             client_session_timeout_seconds=60,
         )
+    
+    @classmethod
+    def _github_mcp(cls) -> MCPServerStdio:
+        return github_mcp.GITHUB_REMOTE_MCP
 
     @classmethod
     def create(cls) -> OpenAIAgent:
@@ -391,7 +395,6 @@ class OpenAiSdkAgents:
             name="read_planner",
             instructions=cls._reader_planner_prompt,
             model=Model.GPT.GPT_5_2.name,
-            mcp_servers=[cls._github_mcp()],
             tool_use_behavior="run_llm_again"
         )
         reader = Agent(
