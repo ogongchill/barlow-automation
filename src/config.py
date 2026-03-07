@@ -3,6 +3,10 @@ import sys
 from dataclasses import dataclass
 from enum import Enum
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 class OsType(str, Enum):
     WINDOWS = "windows"

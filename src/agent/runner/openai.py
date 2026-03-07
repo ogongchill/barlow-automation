@@ -6,31 +6,20 @@ Agent + Runner.run()으로 MCP 도구 연결 및 LLM 호출을 수행하고,
 """
 
 from contextlib import AsyncExitStack
-from dataclasses import dataclass, field
 
-from agents import Agent, Runner, RunConfig, ModelSettings
-from agents.mcp import MCPServerStdio
+from agents import Agent, Runner, RunConfig, ModelSettings, MessageOutputItem
 
-from src.agent.base import IAgent
-from src.agent.runner.models import ModelConfig, Model
-from src.agent.usage import RequestUsage
-
-
-@dataclass
-class OpenAIAgentConfig:
-    """OpenAI Agent 생성에 필요한 설정 묶음."""
-    system_prompt: str
-    model: ModelConfig = field(default_factory=lambda: Model.GPT.DEFAULT)
-    max_tokens: int = 8096
-    mcp_servers: dict[str, dict] = field(default_factory=dict)
+from src.agent.base import IAgent, AgentResult
+from src.agent.usage import RequestUsage, TurnUsage
 
 
 class OpenAIAgent(IAgent):
     """OpenAI Agents SDK 기반 IAgent 구현체."""
 
-    def __init__(self, agent_name: str, config: OpenAIAgentConfig) -> None:
+    def __init__(self, agent_name: str, sdk_agent: Agent, max_tokens: int = 8096) -> None:
         self._name = agent_name
-        self._config = config
+        self._sdk_agent = sdk_agent
+        self._max_tokens = max_tokens
 
     @property
     def name(self) -> str:
@@ -40,51 +29,69 @@ class OpenAIAgent(IAgent):
     def provider(self) -> str:
         return "openai"
 
-    async def run(self, message: str) -> tuple[str, RequestUsage]:
-        """메시지를 받아 Agent를 실행하고 (응답 텍스트, 사용량) 튜플을 반환한다."""
+    async def run(self, message: str) -> AgentResult:
+        """메시지를 받아 Agent를 실행하고 AgentResult를 반환한다."""
         run_config = RunConfig(
-            model_settings=ModelSettings(max_tokens=self._config.max_tokens, tool_choice="required"),
+            model_settings=ModelSettings(max_tokens=self._max_tokens),
             tracing_disabled=True,
         )
 
         async with AsyncExitStack() as stack:
-            mcp_servers = [
-                await stack.enter_async_context(server)
-                for server in self._build_mcp_servers()
-            ]
-
-            agent = Agent(
-                name=self._name,
-                instructions=self._config.system_prompt,
-                model=self._config.model.name,
-                mcp_servers=mcp_servers,
-            )
-
+            await self._connect_mcp_servers(self._sdk_agent, stack)
             result = await Runner.run(
-                starting_agent=agent,
+                starting_agent=self._sdk_agent,
                 input=message,
                 run_config=run_config,
                 max_turns=30,
             )
 
-        return self._extract_output(result), self._extract_usage(result)
+        turns = self._collect_turns(result)
+        usage = self._build_usage(turns)
+        return AgentResult(
+            output=self._extract_output(result),
+            usage=usage,
+            turns=turns,
+            raw=result,
+        )
 
-    def _build_mcp_servers(self) -> list[MCPServerStdio]:
-        """설정된 MCP 서버 정의를 MCPServerStdio 인스턴스 목록으로 변환한다."""
-        servers: list[MCPServerStdio] = []
-        for name, server_def in self._config.mcp_servers.items():
-            server = MCPServerStdio(
-                params={
-                    "command": server_def["command"],
-                    "args": server_def.get("args", []),
-                    "env": server_def.get("env"),
-                },
-                name=name,
-                cache_tools_list=True,
-                client_session_timeout_seconds=60,
+    @staticmethod
+    def _collect_turns(result) -> list[TurnUsage]:
+        """new_items의 agent 순서와 raw_responses를 매핑해 turn별 사용량을 수집한다."""
+        agent_names = [
+            item.agent.name
+            for item in result.new_items
+            if isinstance(item, MessageOutputItem)
+        ]
+
+        turns = []
+        for i, response in enumerate(result.raw_responses):
+            if not response.usage:
+                continue
+            agent_name = agent_names[i] if i < len(agent_names) else "unknown"
+            model = str(
+                getattr(response, "model", None)
+                or getattr(response, "model_id", None)
+                or "unknown"
             )
-            servers.append(server)
-        return servers
+            turns.append(TurnUsage(
+                agent_name=agent_name,
+                model=model,
+                input_tokens=response.usage.input_tokens or 0,
+                output_tokens=response.usage.output_tokens or 0,
+            ))
+        return turns
+
+    @staticmethod
+    def _build_usage(turns: list[TurnUsage]) -> RequestUsage:
+        """TurnUsage 목록에서 모델별 RequestUsage를 집계한다."""
+        usage = RequestUsage()
+        for turn in turns:
+            usage.add(
+                model=turn.model,
+                input_tokens=turn.input_tokens,
+                output_tokens=turn.output_tokens,
+            )
+        return usage
 
     @staticmethod
     def _extract_output(result) -> str:
@@ -92,40 +99,30 @@ class OpenAIAgent(IAgent):
         if result.final_output is not None:
             return str(result.final_output)
 
-        # final_output이 None인 경우 new_items에서 마지막 메시지를 추출
-        from agents import MessageOutputItem
         for item in reversed(result.new_items):
             if isinstance(item, MessageOutputItem):
                 raw = item.raw_item
                 if hasattr(raw, "content") and isinstance(raw.content, list):
-                    texts = []
-                    for part in raw.content:
-                        if hasattr(part, "text"):
-                            texts.append(part.text)
+                    texts = [part.text for part in raw.content if hasattr(part, "text")]
                     if texts:
                         return "\n".join(texts)
         return ""
 
-    def _extract_usage(self, result) -> RequestUsage:
-        """RunResult.raw_responses에서 토큰 사용량을 집계한다."""
-        usage = RequestUsage()
+    async def _connect_mcp_servers(
+        self, agent: Agent, stack: AsyncExitStack, visited: set[int] | None = None
+    ) -> None:
+        """Agent와 모든 handoff Agent의 MCP 서버를 재귀적으로 연결한다.
 
-        total_input = 0
-        total_output = 0
+        visited로 순환 참조를 방지한다.
+        """
+        if visited is None:
+            visited = set()
+        if id(agent) in visited:
+            return
+        visited.add(id(agent))
 
-        for response in result.raw_responses:
-            if response.usage:
-                total_input += response.usage.input_tokens or 0
-                total_output += response.usage.output_tokens or 0
-
-        if total_input or total_output:
-            usage.set_result(
-                model=self._config.model.name,
-                usage={
-                    "input_tokens": total_input,
-                    "output_tokens": total_output,
-                },
-                total_cost_usd=None,
-            )
-
-        return usage
+        for server in (agent.mcp_servers or []):
+            await stack.enter_async_context(server)
+        for handoff in (agent.handoffs or []):
+            if isinstance(handoff, Agent):
+                await self._connect_mcp_servers(handoff, stack, visited)

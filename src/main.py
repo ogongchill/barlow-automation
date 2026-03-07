@@ -12,14 +12,13 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 from src.slack.app import create_app
-from src.agent.agents import github_openai
 from src.session.manager import InMemorySessionManager
-
+import src.agent.agents.open_ai_agents as openAiAgent
 
 async def main() -> None:
     logger.info("Barlow automation bot starting (Socket Mode)...")
 
-    agent = github_openai.create()
+    agent = openAiAgent.create()
     logger.info("agent: %s", agent.name)
 
     session_manager = InMemorySessionManager()

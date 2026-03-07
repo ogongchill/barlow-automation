@@ -33,9 +33,9 @@ def register(app: AsyncApp, agent: IAgent, session_manager: ISessionManager) -> 
         await say(f"<@{user}> 처리 중...")
 
         try:
-            response, usage = await agent.run(user_message)
-            logger.info("mention | user=%s response_len=%d", user, len(response))
-            await say(build_reply(user, response, usage.format()))
+            result = await agent.run(user_message)
+            logger.info("mention | user=%s response_len=%d", user, len(result.output))
+            await say(build_reply(user, result.output, result.usage.format()))
         except Exception:
             logger.exception("mention | user=%s 처리 중 오류 발생", user)
             await say(f"<@{user}> 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")

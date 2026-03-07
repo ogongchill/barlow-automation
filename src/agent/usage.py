@@ -6,71 +6,123 @@ from dataclasses import dataclass, field
 
 from src.agent.runner.models import pricing as _get_pricing
 
+from dataclasses import dataclass, field
 
-@dataclass
+from src.agent.runner.models import pricing as get_pricing
+
+
+@dataclass(slots=True)
+class TurnUsage:
+    """단일 LLM 호출(turn)의 토큰 사용량. agent 및 모델 정보 포함."""
+    agent_name: str
+    model: str
+    input_tokens: int
+    output_tokens: int
+
+
+@dataclass(slots=True)
 class ModelUsage:
     model: str
     input_tokens: int = 0
     output_tokens: int = 0
 
+    def add(self, *, input_tokens: int = 0, output_tokens: int = 0) -> None:
+        self.input_tokens += input_tokens
+        self.output_tokens += output_tokens
+
     @property
-    def cost_usd(self) -> float:
-        input_price, output_price = _get_pricing(self.model)
+    def estimated_cost_usd(self) -> float:
+        input_price, output_price = get_pricing(self.model)
         return (
             self.input_tokens / 1_000_000 * input_price
             + self.output_tokens / 1_000_000 * output_price
         )
 
-    def format(self) -> str:
-        return (
-            f"{self.model:<30} "
-            f"in {self.input_tokens:>7,}  out {self.output_tokens:>7,}  "
-            f"~${self.cost_usd:.5f}"
+
+@dataclass(slots=True)
+class RequestUsage:
+    by_model: dict[str, ModelUsage] = field(default_factory=dict)
+    actual_cost_usd: float | None = None
+
+    def add(
+        self,
+        *,
+        model: str,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        actual_cost_usd: float | None = None,
+    ) -> None:
+        usage = self.by_model.setdefault(model, ModelUsage(model=model))
+        usage.add(input_tokens=input_tokens, output_tokens=output_tokens)
+
+        if actual_cost_usd is not None:
+            self.actual_cost_usd = (self.actual_cost_usd or 0.0) + actual_cost_usd
+
+    def add_from_api(
+        self,
+        *,
+        model: str,
+        usage: dict,
+        actual_cost_usd: float | None = None,
+    ) -> None:
+        self.add(
+            model=model,
+            input_tokens=usage.get("input_tokens", 0) or 0,
+            output_tokens=usage.get("output_tokens", 0) or 0,
+            actual_cost_usd=actual_cost_usd,
         )
 
-
-@dataclass
-class RequestUsage:
-    _by_model: dict[str, ModelUsage] = field(default_factory=dict)
-    _actual_cost_usd: float | None = None  # ResultMessage.total_cost_usd (API 실측값)
-
-    def set_result(self, model: str, usage: dict, total_cost_usd: float | None) -> None:
-        """ResultMessage 수신 시 호출. usage는 API 반환 dict."""
-        if model not in self._by_model:
-            self._by_model[model] = ModelUsage(model=model)
-        entry = self._by_model[model]
-        entry.input_tokens = usage.get("input_tokens", 0) or 0
-        entry.output_tokens = usage.get("output_tokens", 0) or 0
-        self._actual_cost_usd = total_cost_usd
+    @property
+    def total_input_tokens(self) -> int:
+        return sum(item.input_tokens for item in self.by_model.values())
 
     @property
-    def total_input(self) -> int:
-        return sum(m.input_tokens for m in self._by_model.values())
+    def total_output_tokens(self) -> int:
+        return sum(item.output_tokens for item in self.by_model.values())
 
     @property
-    def total_output(self) -> int:
-        return sum(m.output_tokens for m in self._by_model.values())
+    def estimated_total_cost_usd(self) -> float:
+        return sum(item.estimated_cost_usd for item in self.by_model.values())
 
     @property
-    def total_cost(self) -> float:
-        # API 실측값 우선, 없으면 pricing 테이블로 추정
-        if self._actual_cost_usd is not None:
-            return self._actual_cost_usd
-        return sum(m.cost_usd for m in self._by_model.values())
+    def total_cost_usd(self) -> float:
+        return self.actual_cost_usd if self.actual_cost_usd is not None else self.estimated_total_cost_usd
 
-    def format(self) -> str:
-        if not self._by_model:
+    def is_empty(self) -> bool:
+        return not self.by_model
+
+    def to_table(self) -> str:
+        if self.is_empty():
             return ""
-        cost_label = "$" if self._actual_cost_usd is not None else "~$"
-        lines = ["model                          input      output    cost"]
-        lines.append("-" * 60)
-        for entry in self._by_model.values():
-            lines.append(entry.format())
-        if len(self._by_model) > 1:
-            lines.append("-" * 60)
+
+        lines = [
+            f"{'model':<30} {'input':>12} {'output':>12} {'cost':>12}",
+            "-" * 72,
+        ]
+
+        for item in self.by_model.values():
+            lines.append(
+                f"{item.model:<30} "
+                f"{item.input_tokens:>12,} "
+                f"{item.output_tokens:>12,} "
+                f"{'~$' + format(item.estimated_cost_usd, '.5f'):>12}"
+            )
+
+        lines.append("-" * 72)
+
+        total_cost_prefix = "$" if self.actual_cost_usd is not None else "~$"
         lines.append(
             f"{'total':<30} "
-            f"in {self.total_input:>7,}  out {self.total_output:>7,}  "
-            f"{cost_label}{self.total_cost:.5f}"
+            f"{self.total_input_tokens:>12,} "
+            f"{self.total_output_tokens:>12,} "
+            f"{(total_cost_prefix + format(self.total_cost_usd, '.5f')):>12}"
         )
+
         return "\n".join(lines)
+
+    def format(self) -> str:
+        """상세 테이블 문자열 반환."""
+        return self.to_table()
+
+    def __str__(self) -> str:
+        return self.to_table()
