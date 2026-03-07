@@ -16,12 +16,15 @@ def register(app: AsyncApp, agent: IAgent, session_manager: ISessionManager) -> 
 
     @app.event("message")
     async def handle_dm(event: dict, say) -> None:
-        if event.get("channel_type") != "im" or event.get("bot_id"):
+        if event.get("channel_type") != "im" or event.get("bot_id") or event.get("subtype"):
+            return
+        # DM에서 @멘션으로 시작하는 메시지는 app_mention 핸들러가 처리
+        text: str = event.get("text", "")
+        if text.startswith("<@"):
             return
 
         user: str = event.get("user", "unknown")
         channel: str = event.get("channel", "unknown")
-        text: str = event.get("text", "")
 
         session_key: str = f"{channel}:{user}"
         if not await session_manager.try_acquire(session_key):
@@ -32,9 +35,9 @@ def register(app: AsyncApp, agent: IAgent, session_manager: ISessionManager) -> 
         await say(f"<@{user}> 처리 중...")
 
         try:
-            response, usage = await agent.run(text)
-            logger.info("dm | user=%s response_len=%d", user, len(response))
-            await say(build_reply(None, response, usage.format()))
+            result = await agent.run(text)
+            logger.info("dm | user=%s response_len=%d", user, len(result.output))
+            await say(build_reply(None, result.output, result.usage.format()))
         except Exception:
             logger.exception("dm | user=%s 처리 중 오류 발생", user)
             await say("오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
