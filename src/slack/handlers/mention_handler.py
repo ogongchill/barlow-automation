@@ -1,18 +1,16 @@
-"""@mention 이벤트 핸들러."""
-
 import logging
-
 from slack_bolt.async_app import AsyncApp
-
-from src.agent.base import IAgent
 from src.session.manager import ISessionManager
 from src.slack.handlers._reply import build_reply
+from src.agent.agents.agent_factory import OpenAiAgentFactory
 
 logger = logging.getLogger(__name__)
 
 
-def register(app: AsyncApp, agent: IAgent, session_manager: ISessionManager) -> None:
-    """app_mention 이벤트를 등록한다."""
+def register(
+    app: AsyncApp,
+    session_manager: ISessionManager
+) -> None:
 
     @app.event("app_mention")
     async def handle_mention(event: dict, say) -> None:
@@ -27,14 +25,13 @@ def register(app: AsyncApp, agent: IAgent, session_manager: ISessionManager) -> 
             return
 
         logger.info(
-            "mention | agent=%s user=%s channel=%s message=%r",
-            agent.name, user, channel, user_message,
+            "mention | user=%s channel=%s message=%r",
         )
         await say(f"<@{user}> 처리 중...")
-
+        plannerAgent = OpenAiAgentFactory.file_tree_insepctor()
         try:
-            result = await agent.run(user_message)
-            logger.info("mention | user=%s response_len=%d", user, len(result.output))
+            result = await plannerAgent.run(user_message)
+            logger.info("mention | agent got message to user=%s", user)
             await say(build_reply(user, result.output, result.usage.format()))
         except Exception:
             logger.exception("mention | user=%s 처리 중 오류 발생", user)

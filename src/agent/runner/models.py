@@ -72,7 +72,6 @@ def get(model_name: str) -> ModelConfig | None:
 
 
 def pricing(model_name: str) -> tuple[float, float]:
-    """(input_usd_per_mtok, output_usd_per_mtok). 미등록 모델은 prefix 매칭 후 DEFAULT 적용."""
     if model_name in _REGISTRY:
         m = _REGISTRY[model_name]
         return m.input_price, m.output_price

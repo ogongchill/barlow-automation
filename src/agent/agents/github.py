@@ -1,60 +1,7 @@
 from enum import Enum
-
 from src.config import config
-from agents.mcp import MCPServerStdio, MCPServerStreamableHttp, MCPServerStreamableHttpParams
-from src.config import config, OsType
+from agents.mcp import MCPServerStreamableHttp, MCPServerStreamableHttpParams
 
-_GITHUB_READ_TOOLS = [
-    "get_file_contents",
-    "projects_get",
-    "projects_list",
-    "list_branches",
-    "search_code"
-]
-
-_GITHUB_TREE_READ_TOOLS = [
-    "get_repository_tree"
-]
-
-GITHUB_LOCAL_MCP = MCPServerStdio(
-            params={
-                "command": "npx.cmd" if config.os_type == OsType.WINDOWS else "npx",
-                "args": ["-y", "@modelcontextprotocol/server-github"],
-                "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": config.github_token},
-            },
-            name="github",
-            cache_tools_list=True,
-            tool_filter={
-                "allowed_tool_names": _GITHUB_READ_TOOLS
-            },
-            client_session_timeout_seconds=60,
-)
-
-GITHUB_REMOTE_MCP = MCPServerStreamableHttp(
-    params=MCPServerStreamableHttpParams(
-        url="https://api.githubcopilot.com/mcp/",
-        headers={
-            "Authorization": config.github_token,
-            "X-MCP-Tools": ", ".join(_GITHUB_READ_TOOLS),
-            "X-MCP-Readonly": "true",
-        },
-    ),
-    name="github",
-    cache_tools_list=True,
-)
-
-GIHUB_MCP_READ_TREE = MCPServerStreamableHttp(
-     params=MCPServerStreamableHttpParams(
-        url="https://api.githubcopilot.com/mcp/",
-        headers={
-            "Authorization": config.github_token,
-            "X-MCP-Tools": ", ".join(_GITHUB_TREE_READ_TOOLS),
-            "X-MCP-Readonly": "true",
-        },
-    ),
-    name="github-read-tree",
-    cache_tools_list=True,
-)
 
 class GithubToolSet(Enum):
     # see https://github.com/github/github-mcp-server/blob/main/README.md#default-toolset
@@ -81,7 +28,7 @@ class GithubToolSet(Enum):
     # dependabot
     _GET_DEPENDBOT_ALERT = "get_dependabot_alert"
     _LIST_DEPENDABOT_ALERTS = "list_dependabot_alerts"
-    
+
     # discussions
     _GET_DISCUSSION = "get_discussion"
     _GET_DISCUSSION_COMMENTS = "get_discussion_comments"
@@ -183,66 +130,50 @@ class GithubToolSet(Enum):
         _LIST_BRANCHES,
         _SEARCH_CODE
     ]
-    
+
     READ_TREE = [
         _GET_REPOSITORY_TREE,
         _GET_FILE_CONTENTS
     ]
 
-class GitHubMcpType(Enum):
-    
-    LOCAL = "local",
-    REMOTE = "remote"
+
+def _build_server(toolset: GithubToolSet) -> MCPServerStreamableHttp:
+    return MCPServerStreamableHttp(
+        params=MCPServerStreamableHttpParams(
+            url="https://api.githubcopilot.com/mcp/",
+            headers={
+                "Authorization": config.github_token,
+                "X-MCP-Tools": ", ".join(toolset.value),
+                "X-MCP-Readonly": "true",
+            },
+        ),
+        name="github",
+        cache_tools_list=True,
+    )
+
 
 class GitHubMCPFactory:
+    """앱 생명 주기와 동일하게 MCP 서버를 관리하는 팩토리."""
 
-    @staticmethod
-    def _create(
-        mcp_type: GitHubMcpType,
-        toolset: GithubToolSet,
-    ):
+    _read_tree: MCPServerStreamableHttp = _build_server(GithubToolSet.READ_TREE)
+    _read_files: MCPServerStreamableHttp = _build_server(GithubToolSet.READ_FILES)
 
-        if mcp_type == GitHubMcpType.LOCAL:
-            return MCPServerStdio(
-                params={
-                    "command": "npx.cmd" if config.os_type == OsType.WINDOWS else "npx",
-                    "args": ["-y", "@modelcontextprotocol/server-github"],
-                    "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": config.github_token},
-                },
-                name="github",
-                cache_tools_list=True,
-                tool_filter={
-                    "allowed_tool_names": toolset.value
-                },
-                client_session_timeout_seconds=60,
-            )
-
-        elif mcp_type == GitHubMcpType.REMOTE:
-            return MCPServerStreamableHttp(
-                params=MCPServerStreamableHttpParams(
-                    url="https://api.githubcopilot.com/mcp/",
-                    headers={
-                        "Authorization": config.github_token,
-                        "X-MCP-Tools": ", ".join(toolset.value),
-                        "X-MCP-Readonly": "true",
-                    },
-                ),
-                name="github",
-                cache_tools_list=True,
-            )
-
-        raise ValueError("Unsupported MCP type")
-    
     @classmethod
-    def readProjectTree(cls):
-        return cls._create(
-            mcp_type = GitHubMcpType.REMOTE,
-            toolset = GithubToolSet.READ_TREE
-        )
-    
+    async def connect(cls) -> None:
+        """앱 시작 시 모든 MCP 서버를 연결한다."""
+        await cls._read_tree.connect()
+        await cls._read_files.connect()
+
     @classmethod
-    def readProject(cls):
-        return cls._create(
-            mcp_type = GitHubMcpType.REMOTE,
-            toolset = GithubToolSet.READ_FILES
-        )
+    async def disconnect(cls) -> None:
+        """앱 종료 시 모든 MCP 서버를 해제한다."""
+        await cls._read_tree.cleanup()
+        await cls._read_files.cleanup()
+
+    @classmethod
+    def readProjectTree(cls) -> MCPServerStreamableHttp:
+        return cls._read_tree
+
+    @classmethod
+    def readProject(cls) -> MCPServerStreamableHttp:
+        return cls._read_files

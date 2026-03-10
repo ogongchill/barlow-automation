@@ -9,17 +9,14 @@ agents/ 에서 생성되어 IAgent로 주입된다 (DIP).
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from src.agent.usage import AgentUsage
 from typing import Any
-
-from src.agent.usage import RequestUsage, TurnUsage
 
 
 @dataclass
 class AgentResult:
-    """IAgent.run()의 공통 반환 포맷."""
     output: str
-    usage: RequestUsage
-    turns: list[TurnUsage] = field(default_factory=list)  # agent/turn별 세부 사용량
+    usage: AgentUsage
     raw: Any = field(default=None)  # SDK별 raw 응답 (RunResult, ClaudeResult 등)
 
 

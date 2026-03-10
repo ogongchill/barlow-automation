@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 COMMAND_NAME = "/barlow"
 
 
-def register(app: AsyncApp, agent: IAgent) -> None:
+def register(app: AsyncApp) -> None:
     """slash command를 등록한다."""
 
     @app.command(COMMAND_NAME)

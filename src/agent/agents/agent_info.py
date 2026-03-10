@@ -73,7 +73,7 @@ class AvailableAgents(enum.Enum):
 
         - request_summary: 1-2 sentence restatement
         - goals: [{ id, description, suggested_dir, priority }]
-        - focus_areas: priority domains/modules/layers/flows. format: path/to/start <topic>
+        - focus_areas: priority domains/modules/layers/flows. format: path/to/start
         - questions_to_answer: concrete questions Analyzer must answer
         - suspected_locations: candidate areas to inspect first. format: path/to/start <topic> 
         - constraints: scope limits, exclusions, priorities
@@ -86,4 +86,45 @@ class AvailableAgents(enum.Enum):
         - avoid false certainty
         """,
         output_format=_ReadPlanOutput,
+    )
+
+    class _ReadPlanFormat(BaseModel):
+
+        class _SearchTarget(BaseModel):
+            id: str
+            description: str
+            found_dir: list[str]
+
+        request_summary: str = Field(..., description="A concise restatement of the user's request")
+        searchTarget: list[_SearchTarget] = Field(..., description="suspected target groups related to user request")
+
+    READ_TARGET_INSPECTOR = AgentInfo(
+        name="read_target_inspetor",
+        sys_prompt="""
+        You are the Read Target Inspector to discover source-code-related directories.
+
+        - Do not guess implementation details beyond what the repository structure reasonably supports.
+        - answer only in ENG.
+
+        Tool usage rules:
+        - Start with shallow inspection first
+        - Use `path_filter` whenever possible
+        - Do not inspect the full repository recursively unless explicitly requested
+        - Stop as soon as there is enough structural evidence to form a useful plan
+        - ignore configuration files or build-related files.(*.yml, *.gradle, etc)
+
+        Strict evidence rules:
+        - You may include ONLY explicitly observed in tool output during this session
+        - Never invent, infer, or extend a path that was not directly returned by the tool
+        - If a relevant path was not observed, do not mention it
+        - `found_dir` must contain only observed directory paths
+        - If no relevant directory was observed for a target, use an empty list
+
+        Planning guidelines:
+        - Focus on investigation intent, likely search targets, and structural priorities
+        - Group related investigation needs into a small number of practical target buckets
+        - Express uncertainty as hypotheses, not facts
+        - If the request involves feature design, API changes, refactoring, or ticket generation, include likely current implementation discovery areas and impact areas, but only when supported by observed structure
+        """,
+        output_format=_ReadPlanFormat,
     )

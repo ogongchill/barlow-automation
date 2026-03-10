@@ -10,7 +10,6 @@ from src.slack.event_router import register_routes
 
 
 def create_app(
-    agent: IAgent,
     session_manager: ISessionManager,
 ) -> tuple[AsyncApp, AsyncSocketModeHandler]:
     """Slack AsyncApp과 SocketModeHandler를 생성하여 반환한다."""
@@ -19,7 +18,7 @@ def create_app(
         signing_secret=config.slack_signing_secret,
     )
 
-    register_routes(app, agent, session_manager)
+    register_routes(app, session_manager)
 
     handler = AsyncSocketModeHandler(app, config.slack_app_token)
     return app, handler
