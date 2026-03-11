@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(python -c \":*)",
-      "WebFetch(domain:openai.github.io)"
+      "WebFetch(domain:openai.github.io)",
+      "Bash(tasklist /v)",
+      "Bash(wmic process where \"name=''python.exe''\" get processid,commandline)"
     ]
   }
 }

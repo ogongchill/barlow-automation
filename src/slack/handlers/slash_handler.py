@@ -10,6 +10,7 @@ from src.agent.agents.issue_templates import BaseIssueTemplate, DroppableItem
 from src.agent.runner.openai import OpenAIAgent
 from src.session.manager import ISessionManager
 from src.slack.handlers._reply import build_issue_blocks
+from src.slack.handlers.slash_modal_templates import FeatModalInput, RefactorModalInput, FixModalInput
 
 logger = logging.getLogger(__name__)
 
@@ -149,38 +150,82 @@ async def _run_issue_pipeline(
 def register(app: AsyncApp, session_manager: ISessionManager) -> None:
     """slash command 및 버튼 액션 핸들러를 등록한다."""
 
+    def _modal_view(callback_id: str, title: str, blocks: list[dict], metadata: str) -> dict:
+        return {
+            "type": "modal",
+            "callback_id": callback_id,
+            "private_metadata": metadata,
+            "title": {"type": "plain_text", "text": title},
+            "submit": {"type": "plain_text", "text": "생성"},
+            "close": {"type": "plain_text", "text": "취소"},
+            "blocks": blocks,
+        }
+
     @app.command("/feat")
-    async def handle_feat(ack, command: dict, say) -> None:
+    async def handle_feat(ack, command: dict, client) -> None:
         await ack()
         user: str = command.get("user_id", "unknown")
         channel: str = command.get("channel_id", "unknown")
-        user_message: str = command.get("text", "").strip()
-        if not user_message:
-            await say(f"<@{user}> 요청 내용을 입력해주세요. 예: `/feat 로그인 기능 추가`")
-            return
-        await _run_issue_pipeline("feat", user_message, user, channel, session_manager, say)
+        trigger_id: str = command["trigger_id"]
+        await client.views_open(
+            trigger_id=trigger_id,
+            view=_modal_view(FeatModalInput.CALLBACK_ID, "기능 요청", FeatModalInput.modal_blocks(), f"{channel}:{user}"),
+        )
+
+    @app.view(FeatModalInput.CALLBACK_ID)
+    async def handle_feat_submit(ack, body, client) -> None:
+        await ack()
+        metadata: str = body["view"]["private_metadata"]
+        channel, user = metadata.split(":", 1)
+        values: dict = body["view"]["state"]["values"]
+        modal_input = FeatModalInput.from_view(values)
+        await client.chat_postMessage(channel=channel, text=f"<@{user}> 요청을 접수했습니다. 잠시 후 결과를 전달드릴게요.")
+        await _run_issue_pipeline("feat", modal_input.to_prompt(), user, channel, session_manager,
+                                  lambda *args, **kwargs: client.chat_postMessage(channel=channel, **({'text': args[0]} if args else {}), **kwargs))
 
     @app.command("/refactor")
-    async def handle_refactor(ack, command: dict, say) -> None:
+    async def handle_refactor(ack, command: dict, client) -> None:
         await ack()
         user: str = command.get("user_id", "unknown")
         channel: str = command.get("channel_id", "unknown")
-        user_message: str = command.get("text", "").strip()
-        if not user_message:
-            await say(f"<@{user}> 요청 내용을 입력해주세요. 예: `/refactor SessionManager 인터페이스 분리`")
-            return
-        await _run_issue_pipeline("refactor", user_message, user, channel, session_manager, say)
+        trigger_id: str = command["trigger_id"]
+        await client.views_open(
+            trigger_id=trigger_id,
+            view=_modal_view(RefactorModalInput.CALLBACK_ID, "리팩토링 요청", RefactorModalInput.modal_blocks(), f"{channel}:{user}"),
+        )
+
+    @app.view(RefactorModalInput.CALLBACK_ID)
+    async def handle_refactor_submit(ack, body, client) -> None:
+        await ack()
+        metadata: str = body["view"]["private_metadata"]
+        channel, user = metadata.split(":", 1)
+        values: dict = body["view"]["state"]["values"]
+        modal_input = RefactorModalInput.from_view(values)
+        await client.chat_postMessage(channel=channel, text=f"<@{user}> 요청을 접수했습니다. 잠시 후 결과를 전달드릴게요.")
+        await _run_issue_pipeline("refactor", modal_input.to_prompt(), user, channel, session_manager,
+                                  lambda *args, **kwargs: client.chat_postMessage(channel=channel, **({'text': args[0]} if args else {}), **kwargs))
 
     @app.command("/fix")
-    async def handle_fix(ack, command: dict, say) -> None:
+    async def handle_fix(ack, command: dict, client) -> None:
         await ack()
         user: str = command.get("user_id", "unknown")
         channel: str = command.get("channel_id", "unknown")
-        user_message: str = command.get("text", "").strip()
-        if not user_message:
-            await say(f"<@{user}> 요청 내용을 입력해주세요. 예: `/fix 로그인 시 NPE 발생`")
-            return
-        await _run_issue_pipeline("fix", user_message, user, channel, session_manager, say)
+        trigger_id: str = command["trigger_id"]
+        await client.views_open(
+            trigger_id=trigger_id,
+            view=_modal_view(FixModalInput.CALLBACK_ID, "버그 수정 요청", FixModalInput.modal_blocks(), f"{channel}:{user}"),
+        )
+
+    @app.view(FixModalInput.CALLBACK_ID)
+    async def handle_fix_submit(ack, body, client) -> None:
+        await ack()
+        metadata: str = body["view"]["private_metadata"]
+        channel, user = metadata.split(":", 1)
+        values: dict = body["view"]["state"]["values"]
+        modal_input = FixModalInput.from_view(values)
+        await client.chat_postMessage(channel=channel, text=f"<@{user}> 요청을 접수했습니다. 잠시 후 결과를 전달드릴게요.")
+        await _run_issue_pipeline("fix", modal_input.to_prompt(), user, channel, session_manager,
+                                  lambda *args, **kwargs: client.chat_postMessage(channel=channel, **({'text': args[0]} if args else {}), **kwargs))
 
     @app.action("issue_accept")
     async def handle_accept(ack, body, say) -> None:
