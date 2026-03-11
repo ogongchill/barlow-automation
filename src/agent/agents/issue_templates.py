@@ -51,6 +51,11 @@ class BaseIssueTemplate(BaseModel):
         """Modal 체크박스에 표시할 항목 목록을 반환한다."""
         ...
 
+    @abstractmethod
+    def without(self, dropped_ids: set[str]) -> "BaseIssueTemplate":
+        """dropped_ids에 해당하는 항목을 제거한 새 인스턴스를 반환한다."""
+        ...
+
 
 class FeatTemplate(BaseIssueTemplate):
     new_features: list[str]
@@ -79,6 +84,13 @@ class FeatTemplate(BaseIssueTemplate):
         for i, item in enumerate(self.domain_constraints):
             items.append(DroppableItem(id=f"domain_constraints::{i}", section="기술 제약", text=item))
         return items
+
+    def without(self, dropped_ids: set[str]) -> "FeatTemplate":
+        return self.model_copy(update={
+            "new_features": [v for i, v in enumerate(self.new_features) if f"new_features::{i}" not in dropped_ids],
+            "domain_rules": [v for i, v in enumerate(self.domain_rules) if f"domain_rules::{i}" not in dropped_ids],
+            "domain_constraints": [v for i, v in enumerate(self.domain_constraints) if f"domain_constraints::{i}" not in dropped_ids],
+        })
 
 
 class RefactorTemplate(BaseIssueTemplate):
@@ -121,6 +133,13 @@ class RefactorTemplate(BaseIssueTemplate):
         for i, item in enumerate(self.domain_constraints):
             items.append(DroppableItem(id=f"domain_constraints::{i}", section="기술 제약", text=item))
         return items
+
+    def without(self, dropped_ids: set[str]) -> "RefactorTemplate":
+        return self.model_copy(update={
+            "goals": [g for i, g in enumerate(self.goals) if f"goals::{i}" not in dropped_ids],
+            "domain_rules": [v for i, v in enumerate(self.domain_rules) if f"domain_rules::{i}" not in dropped_ids],
+            "domain_constraints": [v for i, v in enumerate(self.domain_constraints) if f"domain_constraints::{i}" not in dropped_ids],
+        })
 
 
 class FixTemplate(BaseIssueTemplate):
@@ -170,3 +189,11 @@ class FixTemplate(BaseIssueTemplate):
         for i, item in enumerate(self.domain_constraints):
             items.append(DroppableItem(id=f"domain_constraints::{i}", section="기술 제약", text=item))
         return items
+
+    def without(self, dropped_ids: set[str]) -> "FixTemplate":
+        return self.model_copy(update={
+            "problems": [p for i, p in enumerate(self.problems) if f"problems::{i}" not in dropped_ids],
+            "implementation": [s for i, s in enumerate(self.implementation) if f"implementation::{i}" not in dropped_ids],
+            "domain_rules": [v for i, v in enumerate(self.domain_rules) if f"domain_rules::{i}" not in dropped_ids],
+            "domain_constraints": [v for i, v in enumerate(self.domain_constraints) if f"domain_constraints::{i}" not in dropped_ids],
+        })

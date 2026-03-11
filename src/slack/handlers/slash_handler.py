@@ -35,6 +35,15 @@ def _issue_agent(subcommand: str) -> OpenAIAgent:
         return OpenAiAgentFactory.fix_issue_gen()
 
 
+def _reissue_agent(subcommand: str) -> OpenAIAgent:
+    if subcommand == "feat":
+        return OpenAiAgentFactory.feat_reissue_gen()
+    elif subcommand == "refactor":
+        return OpenAiAgentFactory.refactor_reissue_gen()
+    else:
+        return OpenAiAgentFactory.fix_reissue_gen()
+
+
 def _build_reject_modal_blocks(droppable: list[DroppableItem]) -> list[dict]:
     """드롭 항목 선택 Modal의 Block Kit 블록을 생성한다."""
     blocks: list[dict] = [
@@ -240,25 +249,29 @@ def register(app: AsyncApp, session_manager: ISessionManager) -> None:
             .get("value") or ""
         )
 
-        # 체크 해제된 항목 = 제외 목록
-        all_items = ctx.typed_output.droppable_items()
-        dropped = [item for item in all_items if item.id not in selected_ids]
+        # 체크 해제된 항목 ID = 제외할 항목
+        all_ids = {item.id for item in ctx.typed_output.droppable_items()}
+        dropped_ids = all_ids - selected_ids
 
-        # inspector 출력에 제외 지시 + 추가 요구사항 삽입
-        extra = ""
-        if dropped:
-            exclude_lines = "\n".join(f"- {item.text}" for item in dropped)
-            extra += f"\n\n---\nDo NOT include the following items in the new response:\n{exclude_lines}"
+        # 추가 요건도 없고 제외 항목도 없으면 아무 변경 없음 → LLM 호출 생략
+        if not dropped_ids and not additional_request:
+            await client.chat_postMessage(channel=channel, text=f"<@{user}> 변경 사항이 없습니다.")
+            return
+
+        # 코드 레벨에서 제외 항목 제거 → 필터링된 draft 생성
+        filtered = ctx.typed_output.without(dropped_ids)
+        draft_text = filtered.slack_format()
+
+        # [Inspector Context] + [Current Issue Draft] + 추가 요건
+        reissue_input = f"[Inspector Context]\n{ctx.inspector_output}\n\n[Current Issue Draft]\n{draft_text}"
         if additional_request:
-            extra += f"\n\nAdditional requirements: {additional_request}"
-
-        augmented_input = ctx.inspector_output + extra
+            reissue_input += f"\n\n---\nAdditional requirements: {additional_request}"
 
         await client.chat_postMessage(channel=channel, text=f"<@{user}> 이슈를 재생성 중입니다...")
-        logger.info("slash | reject modal submitted | user=%s dropped=%d", user, len(dropped))
+        logger.info("slash | reject modal submitted | user=%s dropped=%d", user, len(dropped_ids))
 
         try:
-            issue_result = await _issue_agent(ctx.subcommand).run(augmented_input)
+            issue_result = await _reissue_agent(ctx.subcommand).run(reissue_input)
             _pending[(channel, user)] = _IssueContext(
                 subcommand=ctx.subcommand,
                 user_message=ctx.user_message,

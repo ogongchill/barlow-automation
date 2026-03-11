@@ -79,3 +79,45 @@ class OpenAiAgentFactory:
                 output_type=info.output_format,
             ),
         )
+
+    @staticmethod
+    def feat_reissue_gen() -> OpenAIAgent:
+        info = AvailableAgents.FEAT_REISSUE_GEN.value
+        return OpenAIAgent(
+            agent_name=info.name,
+            sdk_agent=Agent(
+                name=info.name,
+                instructions=info.sys_prompt,
+                model=Model.GPT.GPT_5_MINI.name,
+                mcp_servers=[GitHubMCPFactory.readProject()],
+                output_type=info.output_format,
+            ),
+        )
+
+    @staticmethod
+    def refactor_reissue_gen() -> OpenAIAgent:
+        info = AvailableAgents.REFACTOR_REISSUE_GEN.value
+        return OpenAIAgent(
+            agent_name=info.name,
+            sdk_agent=Agent(
+                name=info.name,
+                instructions=info.sys_prompt,
+                model=Model.GPT.GPT_5_MINI.name,
+                mcp_servers=[GitHubMCPFactory.readProject()],
+                output_type=info.output_format,
+            ),
+        )
+
+    @staticmethod
+    def fix_reissue_gen() -> OpenAIAgent:
+        info = AvailableAgents.FIX_REISSUE_GEN.value
+        return OpenAIAgent(
+            agent_name=info.name,
+            sdk_agent=Agent(
+                name=info.name,
+                instructions=info.sys_prompt,
+                model=Model.GPT.GPT_5_MINI.name,
+                mcp_servers=[GitHubMCPFactory.readProject()],
+                output_type=info.output_format,
+            ),
+        )
