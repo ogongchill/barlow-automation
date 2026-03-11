@@ -1,43 +1,299 @@
 """Slash command 이벤트 핸들러."""
 
 import logging
+from dataclasses import dataclass
 
 from slack_bolt.async_app import AsyncApp
 
-from src.agent.base import IAgent
-from src.slack.handlers._reply import build_reply
+from src.agent.agents.agent_factory import OpenAiAgentFactory
+from src.agent.agents.issue_templates import BaseIssueTemplate, DroppableItem
+from src.agent.runner.openai import OpenAIAgent
+from src.session.manager import ISessionManager
+from src.slack.handlers._reply import build_issue_blocks
 
 logger = logging.getLogger(__name__)
 
-COMMAND_NAME = "/barlow"
+
+@dataclass
+class _IssueContext:
+    subcommand: str
+    user_message: str      # 드롭 시 처음부터 재실행하기 위해 보관
+    inspector_output: str  # 재요청 시 inspector 재실행 없이 재사용
+    typed_output: BaseIssueTemplate  # 드롭 항목 선택 Modal용
 
 
-def register(app: AsyncApp) -> None:
-    """slash command를 등록한다."""
+# (channel, user) → _IssueContext. 수락/재요청/드롭 대기 중인 이슈 컨텍스트를 보관한다.
+_pending: dict[tuple[str, str], _IssueContext] = {}
 
-    @app.command(COMMAND_NAME)
-    async def handle_slash(ack, command: dict, say) -> None:
+
+def _issue_agent(subcommand: str) -> OpenAIAgent:
+    if subcommand == "feat":
+        return OpenAiAgentFactory.feat_issue_gen()
+    elif subcommand == "refactor":
+        return OpenAiAgentFactory.refactor_issue_gen()
+    else:
+        return OpenAiAgentFactory.fix_issue_gen()
+
+
+def _build_reject_modal_blocks(droppable: list[DroppableItem]) -> list[dict]:
+    """드롭 항목 선택 Modal의 Block Kit 블록을 생성한다."""
+    blocks: list[dict] = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "제외할 항목의 *체크를 해제*하세요. 체크된 항목만 재생성에 포함됩니다.",
+            },
+        }
+    ]
+
+    # 섹션별로 그룹핑 (입력 순서 유지)
+    section_groups: dict[str, list[DroppableItem]] = {}
+    for item in droppable:
+        section_groups.setdefault(item.section, []).append(item)
+
+    for idx, (section_label, items) in enumerate(section_groups.items()):
+        options = [
+            {
+                "text": {"type": "plain_text", "text": item.text[:74]},
+                "value": item.id,
+            }
+            for item in items
+        ]
+        blocks.append({
+            "type": "input",
+            "block_id": f"drop_{idx}",
+            "optional": True,
+            "label": {"type": "plain_text", "text": section_label},
+            "element": {
+                "type": "checkboxes",
+                "action_id": "selected_items",
+                "options": options,
+                "initial_options": options,  # 기본: 전체 선택
+            },
+        })
+
+    blocks.append({
+        "type": "input",
+        "block_id": "additional_request",
+        "optional": True,
+        "label": {"type": "plain_text", "text": "추가 요구사항 (선택)"},
+        "element": {
+            "type": "plain_text_input",
+            "action_id": "request_text",
+            "multiline": True,
+            "placeholder": {"type": "plain_text", "text": "예: 인증 관련 항목을 더 강조해주세요"},
+        },
+    })
+
+    return blocks
+
+
+async def _execute_pipeline(
+    subcommand: str,
+    user_message: str,
+    user: str,
+    channel: str,
+    say,
+) -> None:
+    """세션 관리 없이 inspector → issue_gen 파이프라인만 실행한다."""
+    await say(f"<@{user}> 코드베이스를 분석 중입니다...")
+    inspector_result = await OpenAiAgentFactory.file_tree_insepctor().run(user_message)
+    logger.info("slash | inspector done | user=%s subcommand=%s", user, subcommand)
+
+    await say(f"<@{user}> 이슈를 생성 중입니다...")
+    issue_result = await _issue_agent(subcommand).run(inspector_result.output)
+    logger.info("slash | issue_gen done | user=%s", user)
+
+    _pending[(channel, user)] = _IssueContext(
+        subcommand=subcommand,
+        user_message=user_message,
+        inspector_output=inspector_result.output,
+        typed_output=issue_result.typed_output,
+    )
+    formatted = issue_result.typed_output.slack_format()
+    await say(blocks=build_issue_blocks(user, formatted, issue_result.usage.format()))
+
+
+async def _run_issue_pipeline(
+    subcommand: str,
+    user_message: str,
+    user: str,
+    channel: str,
+    session_manager: ISessionManager,
+    say,
+) -> None:
+    """세션을 획득한 뒤 파이프라인을 실행한다."""
+    session_key = f"{channel}:{user}"
+    if not await session_manager.try_acquire(session_key):
+        await say(f"<@{user}> 이미 처리 중인 요청이 있습니다.")
+        return
+
+    try:
+        await _execute_pipeline(subcommand, user_message, user, channel, say)
+    except Exception:
+        logger.exception("slash | user=%s 처리 중 오류 발생", user)
+        await say(f"<@{user}> 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+        await session_manager.release(session_key)
+
+
+def register(app: AsyncApp, session_manager: ISessionManager) -> None:
+    """slash command 및 버튼 액션 핸들러를 등록한다."""
+
+    @app.command("/feat")
+    async def handle_feat(ack, command: dict, say) -> None:
         await ack()
-
         user: str = command.get("user_id", "unknown")
         channel: str = command.get("channel_id", "unknown")
-        text: str = command.get("text", "").strip()
+        user_message: str = command.get("text", "").strip()
+        if not user_message:
+            await say(f"<@{user}> 요청 내용을 입력해주세요. 예: `/feat 로그인 기능 추가`")
+            return
+        await _run_issue_pipeline("feat", user_message, user, channel, session_manager, say)
 
-        logger.info(
-            "slash | agent=%s user=%s channel=%s command=%s message=%r",
-            agent.name, user, channel, COMMAND_NAME, text,
-        )
+    @app.command("/refactor")
+    async def handle_refactor(ack, command: dict, say) -> None:
+        await ack()
+        user: str = command.get("user_id", "unknown")
+        channel: str = command.get("channel_id", "unknown")
+        user_message: str = command.get("text", "").strip()
+        if not user_message:
+            await say(f"<@{user}> 요청 내용을 입력해주세요. 예: `/refactor SessionManager 인터페이스 분리`")
+            return
+        await _run_issue_pipeline("refactor", user_message, user, channel, session_manager, say)
 
-        if not text:
-            await say(f"<@{user}> 메시지를 입력해주세요. 예: `{COMMAND_NAME} 티켓 생성해줘`")
+    @app.command("/fix")
+    async def handle_fix(ack, command: dict, say) -> None:
+        await ack()
+        user: str = command.get("user_id", "unknown")
+        channel: str = command.get("channel_id", "unknown")
+        user_message: str = command.get("text", "").strip()
+        if not user_message:
+            await say(f"<@{user}> 요청 내용을 입력해주세요. 예: `/fix 로그인 시 NPE 발생`")
+            return
+        await _run_issue_pipeline("fix", user_message, user, channel, session_manager, say)
+
+    @app.action("issue_accept")
+    async def handle_accept(ack, body, say) -> None:
+        await ack()
+        user: str = body["user"]["id"]
+        channel: str = body["channel"]["id"]
+        _pending.pop((channel, user), None)
+        await session_manager.release(f"{channel}:{user}")
+        await say(f"<@{user}> 이슈가 수락되었습니다.")
+        logger.info("slash | issue accepted | user=%s", user)
+
+    @app.action("issue_reject")
+    async def handle_reject(ack, body, client) -> None:
+        """현재 이슈 항목을 체크박스 Modal로 표시해 제외할 항목을 선택받는다."""
+        await ack()
+        user: str = body["user"]["id"]
+        channel: str = body["channel"]["id"]
+        trigger_id: str = body["trigger_id"]
+
+        ctx = _pending.get((channel, user))
+        if not ctx:
+            await client.chat_postMessage(
+                channel=channel,
+                text=f"<@{user}> 재요청할 이슈 컨텍스트가 없습니다. 명령어를 다시 입력해주세요.",
+            )
             return
 
-        await say(f"<@{user}> 처리 중...")
+        droppable = ctx.typed_output.droppable_items()
+        await client.views_open(
+            trigger_id=trigger_id,
+            view={
+                "type": "modal",
+                "callback_id": "issue_reject_modal",
+                "private_metadata": f"{channel}:{user}",
+                "title": {"type": "plain_text", "text": "이슈 재요청"},
+                "submit": {"type": "plain_text", "text": "재생성"},
+                "close": {"type": "plain_text", "text": "취소"},
+                "blocks": _build_reject_modal_blocks(droppable),
+            },
+        )
+
+    @app.view("issue_reject_modal")
+    async def handle_reject_modal(ack, body, client) -> None:
+        """Modal 제출 시 체크 해제된 항목을 제외하고 이슈를 재생성한다."""
+        await ack()
+
+        metadata: str = body["view"]["private_metadata"]
+        channel, user = metadata.split(":", 1)
+
+        ctx = _pending.get((channel, user))
+        if not ctx:
+            return
+
+        # 선택된(체크된) 항목 수집
+        values: dict = body["view"]["state"]["values"]
+        selected_ids: set[str] = set()
+        for block_id, block_val in values.items():
+            if block_id.startswith("drop_"):
+                selected_opts = block_val.get("selected_items", {}).get("selected_options") or []
+                for opt in selected_opts:
+                    selected_ids.add(opt["value"])
+
+        additional_request: str = (
+            values.get("additional_request", {})
+            .get("request_text", {})
+            .get("value") or ""
+        )
+
+        # 체크 해제된 항목 = 제외 목록
+        all_items = ctx.typed_output.droppable_items()
+        dropped = [item for item in all_items if item.id not in selected_ids]
+
+        # inspector 출력에 제외 지시 + 추가 요구사항 삽입
+        extra = ""
+        if dropped:
+            exclude_lines = "\n".join(f"- {item.text}" for item in dropped)
+            extra += f"\n\n---\nDo NOT include the following items in the new response:\n{exclude_lines}"
+        if additional_request:
+            extra += f"\n\nAdditional requirements: {additional_request}"
+
+        augmented_input = ctx.inspector_output + extra
+
+        await client.chat_postMessage(channel=channel, text=f"<@{user}> 이슈를 재생성 중입니다...")
+        logger.info("slash | reject modal submitted | user=%s dropped=%d", user, len(dropped))
 
         try:
-            response, usage = await agent.run(text)
-            logger.info("slash | user=%s response_len=%d", user, len(response))
-            await say(build_reply(user, response, usage.format()))
+            issue_result = await _issue_agent(ctx.subcommand).run(augmented_input)
+            _pending[(channel, user)] = _IssueContext(
+                subcommand=ctx.subcommand,
+                user_message=ctx.user_message,
+                inspector_output=ctx.inspector_output,
+                typed_output=issue_result.typed_output,
+            )
+            formatted = issue_result.typed_output.slack_format()
+            await client.chat_postMessage(
+                channel=channel,
+                blocks=build_issue_blocks(user, formatted, issue_result.usage.format()),
+            )
         except Exception:
-            logger.exception("slash | user=%s 처리 중 오류 발생", user)
+            logger.exception("slash | reject modal | user=%s 오류 발생", user)
+            await client.chat_postMessage(
+                channel=channel,
+                text=f"<@{user}> 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+            )
+
+    @app.action("issue_drop")
+    async def handle_drop(ack, body, say) -> None:
+        """inspector부터 처음부터 다시 실행한다."""
+        await ack()
+        user: str = body["user"]["id"]
+        channel: str = body["channel"]["id"]
+
+        ctx = _pending.get((channel, user))
+        if not ctx:
+            await say(f"<@{user}> 재실행할 컨텍스트가 없습니다. 명령어를 다시 입력해주세요.")
+            return
+
+        await say(f"<@{user}> 코드베이스 탐색부터 다시 시작합니다...")
+        try:
+            await _execute_pipeline(ctx.subcommand, ctx.user_message, user, channel, say)
+            logger.info("slash | issue dropped and restarted | user=%s", user)
+
+        except Exception:
+            logger.exception("slash | drop | user=%s 오류 발생", user)
             await say(f"<@{user}> 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")

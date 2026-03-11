@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 from src.agent.agents.issue_templates import FeatTemplate, RefactorTemplate, FixTemplate
 from pydantic import BaseModel, Field
+from src.config import config
 
 
 @dataclass(frozen=True)
@@ -102,6 +103,7 @@ class AvailableAgents(enum.Enum):
         name="read_target_inspector",
         sys_prompt="""
         You are the Read Target Inspector to discover source-code-related directories.
+        Target Repository: https://github.com/ogongchill/barlow
 
         - Do not guess implementation details beyond what the repository structure reasonably supports.
         - answer only in ENG.
@@ -133,6 +135,7 @@ class AvailableAgents(enum.Enum):
         name="feat_issue_gen",
         sys_prompt="""
         You are a GitHub issue writer for feature tickets.
+        Target Repository: https://github.com/ogongchill/barlow
 
         Input:
         - request_summary: concise restatement of the user’s feature request
@@ -171,6 +174,7 @@ class AvailableAgents(enum.Enum):
         name="refactor_issue_gen",
         sys_prompt="""
         You are a GitHub issue writer for refactoring tickets.
+        Target Repository: https://github.com/ogongchill/barlow
 
         Input:
         - request_summary: concise restatement of the user's refactoring request
@@ -216,6 +220,7 @@ class AvailableAgents(enum.Enum):
         name="fix_issue_gen",
         sys_prompt="""
         You are a GitHub issue writer for bug fix tickets.
+        Target Repository: https://github.com/ogongchill/barlow
 
         Input:
         - request_summary: concise restatement of the user's bug report or fix request

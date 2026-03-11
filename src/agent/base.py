@@ -17,7 +17,8 @@ from typing import Any
 class AgentResult:
     output: str
     usage: AgentUsage
-    raw: Any = field(default=None)  # SDK별 raw 응답 (RunResult, ClaudeResult 등)
+    raw: Any = field(default=None)          # SDK별 raw 응답 (RunResult, ClaudeResult 등)
+    typed_output: Any = field(default=None)  # output_type 지정 시 파싱된 Pydantic 인스턴스
 
 
 class IAgent(ABC):

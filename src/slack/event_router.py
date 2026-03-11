@@ -12,5 +12,5 @@ def register_routes(
 ) -> None:
     """모든 Slack 이벤트/커맨드 핸들러를 app에 등록한다."""
     mention_handler.register(app, session_manager)
-    slash_handler.register(app)
+    slash_handler.register(app, session_manager)
     message_handler.register(app, session_manager)

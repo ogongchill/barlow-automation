@@ -45,6 +45,7 @@ class OpenAIAgent(IAgent):
             output=self._extract_output(result),
             usage=agent_usage,
             raw=result,
+            typed_output=result.final_output,
         )
 
     @staticmethod
