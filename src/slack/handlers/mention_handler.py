@@ -29,10 +29,14 @@ def register(
         )
         await say(f"<@{user}> 처리 중...")
         plannerAgent = OpenAiAgentFactory.file_tree_insepctor()
+        issueAgent = OpenAiAgentFactory.feat_issue_gen()
         try:
             result = await plannerAgent.run(user_message)
             logger.info("mention | agent got message to user=%s", user)
-            await say(build_reply(user, result.output, result.usage.format()))
+            await say(build_reply(user, "파일 목록을 확인했습니다. 계속 진행합니다...", result.usage.format()))
+            issue = await issueAgent.run(result.output)
+            logger.info("mention | generating issues,,,,,")
+            await say(build_reply(user, issue.output, issue.usage.format()))
         except Exception:
             logger.exception("mention | user=%s 처리 중 오류 발생", user)
             await say(f"<@{user}> 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")

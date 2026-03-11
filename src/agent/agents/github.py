@@ -125,9 +125,6 @@ class GithubToolSet(Enum):
 
     READ_FILES = [
         _GET_FILE_CONTENTS,
-        _PROJECTS_GET,
-        _PROJECTS_LIST,
-        _LIST_BRANCHES,
         _SEARCH_CODE
     ]
 

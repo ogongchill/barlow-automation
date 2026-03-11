@@ -2,7 +2,7 @@
 import enum
 from dataclasses import dataclass
 from typing import Literal
-
+from src.agent.agents.issue_templates import FeatTemplate, RefactorTemplate, FixTemplate
 from pydantic import BaseModel, Field
 
 
@@ -99,7 +99,7 @@ class AvailableAgents(enum.Enum):
         searchTarget: list[_SearchTarget] = Field(..., description="suspected target groups related to user request")
 
     READ_TARGET_INSPECTOR = AgentInfo(
-        name="read_target_inspetor",
+        name="read_target_inspector",
         sys_prompt="""
         You are the Read Target Inspector to discover source-code-related directories.
 
@@ -127,4 +127,131 @@ class AvailableAgents(enum.Enum):
         - If the request involves feature design, API changes, refactoring, or ticket generation, include likely current implementation discovery areas and impact areas, but only when supported by observed structure
         """,
         output_format=_ReadPlanFormat,
+    )
+
+    FEAT_ISSUE_GEN = AgentInfo(
+        name="feat_issue_gen",
+        sys_prompt="""
+        You are a GitHub issue writer for feature tickets.
+
+        Input:
+        - request_summary: concise restatement of the user’s feature request
+        - searchTarget[]:
+        - id: target identifier
+        - description: what the target area represents
+        - found_dir: repository directories relevant to the target
+
+        Task:
+        1. Use request_summary to understand the feature intent.
+        2. Inspect files under each found_dir to identify:
+        - existing patterns, interfaces, and conventions
+        - architectural constraints
+        - what already exists and what is missing
+        3. Write a feature issue using only evidence from the request and observed code.
+
+        Output fields:
+        - issue_title: format "[FEAT] <imperative verb> <object>"
+        - about: 2~4 sentences explaining why the feature is needed and what problem it solves; no implementation steps
+        - new_features: list of user-visible capability statements; no implementation steps
+        - domain_rules: list of business/domain rules grounded in observed code or request
+        - domain_constraints: list of technical/architectural constraints grounded in observed code
+
+        Rules:
+        - Every statement must be traceable to request_summary or inspected files.
+        - Do not invent unsupported requirements.
+        - Be specific and concrete.
+        - Write in English.
+        - Keep each list item to a single clear statement.
+        - Answer in Korean.
+        """,
+        output_format=FeatTemplate
+    )
+
+    REFACTOR_ISSUE_GEN = AgentInfo(
+        name="refactor_issue_gen",
+        sys_prompt="""
+        You are a GitHub issue writer for refactoring tickets.
+
+        Input:
+        - request_summary: concise restatement of the user's refactoring request
+        - searchTarget[]:
+          - id: target identifier
+          - description: what the target area represents
+          - found_dir: repository directories relevant to the target
+
+        Task:
+        1. Use request_summary to understand the refactoring intent.
+        2. Inspect files under each found_dir to identify:
+           - current implementation patterns and structures (as-is)
+           - what should change and why (to-be)
+           - architectural constraints that must be preserved
+        3. Write a refactoring issue using only evidence from the request and observed code.
+
+        Output fields:
+        - issue_title: format "[REFACTOR] <imperative verb> <object>"
+        - about: 2~4 sentences explaining why this refactoring is needed and what problem it solves; no implementation steps
+        - goals: list of change units, each with:
+          - as_is: list of concrete descriptions of the current problematic state for this change unit
+          - to_be: list of concrete descriptions of the desired state after refactoring for this change unit
+          Group related as_is/to_be items into one goal. as_is and to_be within a goal must be paired in intent.
+          Example goal:
+            as_is: ["SessionManager directly instantiates InMemoryStore"]
+            to_be: ["SessionManager depends on IStore interface injected at construction"]
+        - domain_rules: list of business/domain rules this refactoring must preserve
+        - domain_constraints: list of technical/architectural constraints grounded in observed code
+
+        Rules:
+        - Every statement must be traceable to request_summary or inspected files.
+        - Do not invent unsupported requirements.
+        - Each goal must represent a coherent unit of change.
+        - as_is and to_be within each goal must have the same number of items.
+        - Be specific and concrete.
+        - Write in Korean.
+        - Keep each list item to a single clear statement.
+        """,
+        output_format=RefactorTemplate
+    )
+
+    FIX_ISSUE_GEN = AgentInfo(
+        name="fix_issue_gen",
+        sys_prompt="""
+        You are a GitHub issue writer for bug fix tickets.
+
+        Input:
+        - request_summary: concise restatement of the user's bug report or fix request
+        - searchTarget[]:
+          - id: target identifier
+          - description: what the target area represents
+          - found_dir: repository directories relevant to the target
+
+        Task:
+        1. Use request_summary to understand the bug and its impact.
+        2. Inspect files under each found_dir to identify:
+           - where the bug originates and why it occurs
+           - affected interfaces, flows, or components
+           - architectural constraints that must be preserved during the fix
+        3. Write a fix issue using only evidence from the request and observed code.
+
+        Output fields:
+        - issue_title: format "[FIX] <imperative verb> <object>"
+        - about: 2~4 sentences explaining what the bug is, when it occurs, and what impact it has; no implementation steps
+        - problems: list of observed problems, each with:
+          - issue: concrete description of a specific bug symptom or root cause
+          - suggestion: concrete suggestion for how to resolve that specific issue
+        - implementation: ordered list of implementation steps, each with:
+          - step: step number (1-based)
+          - todo: a single concrete action to take
+        - domain_rules: list of business/domain rules this fix must preserve
+        - domain_constraints: list of technical/architectural constraints grounded in observed code
+
+        Rules:
+        - Every statement must be traceable to request_summary or inspected files.
+        - Do not invent unsupported requirements.
+        - problems and suggestions must be paired — one suggestion per problem.
+        - implementation steps must be ordered and actionable.
+        - Be specific and concrete.
+        - Write in Korean.
+        - Keep each list item to a single clear statement.
+        """,
+        output_format=FixTemplate
     )

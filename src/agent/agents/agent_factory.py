@@ -23,7 +23,7 @@ class OpenAiAgentFactory:
                 output_type=info.output_format,
             ),
         )
-    
+
     @staticmethod
     def file_tree_insepctor() -> OpenAIAgent:
         info = AvailableAgents.READ_TARGET_INSPECTOR.value
@@ -34,6 +34,20 @@ class OpenAiAgentFactory:
                 instructions=info.sys_prompt,
                 model=Model.GPT.GPT_5_MINI.name,
                 mcp_servers=[GitHubMCPFactory.readProjectTree()],
+                output_type=info.output_format,
+            ),
+        )
+
+    @staticmethod
+    def feat_issue_gen() -> OpenAIAgent:
+        info = AvailableAgents.FEAT_ISSUE_GEN.value
+        return OpenAIAgent(
+            agent_name=info.name,
+            sdk_agent=Agent(
+                name=info.name,
+                instructions=info.sys_prompt,
+                model=Model.GPT.GPT_5_MINI.name,
+                mcp_servers=[GitHubMCPFactory.readProject()],
                 output_type=info.output_format,
             ),
         )
