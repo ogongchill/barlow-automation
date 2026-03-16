@@ -41,6 +41,7 @@ def mock_sqs_client():
 @pytest.fixture()
 def mock_slack_client():
     client = AsyncMock()
+    client.auth_test = AsyncMock(return_value={"ok": True, "bot_id": "B1", "user_id": "U_BOT", "team_id": "T1"})
     client.views_open = AsyncMock(return_value={"ok": True})
     client.chat_postMessage = AsyncMock(return_value={"ok": True, "ts": "new_ts"})
     client.chat_update = AsyncMock(return_value={"ok": True})

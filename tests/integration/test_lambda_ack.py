@@ -6,15 +6,31 @@
   - Slack client: app._client
 """
 
+import hashlib
+import hmac
 import json
+import time
 import urllib.parse
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from slack_bolt.async_app import AsyncApp
+from slack_bolt.authorization import AuthorizeResult
 from slack_bolt.request.async_request import AsyncBoltRequest
 
 from src.controller.handler.slash import register
+
+
+async def _authorize(**_kwargs) -> AuthorizeResult:
+    return AuthorizeResult(
+        enterprise_id=None,
+        team_id="T1",
+        bot_token="xoxb-test",
+        bot_id="B1",
+        bot_user_id="U_BOT",
+    )
+
+_SIGNING_SECRET = "test-signing-secret"  # matches tests/conftest.py SLACK_SIGNING_SECRET
 
 
 # ── 헬퍼 ─────────────────────────────────────────────────────────────────────
@@ -62,16 +78,32 @@ def _action_body(action_id: str, message_ts: str = "msg_ts_123", channel_id: str
 
 
 def _req(body: str, content_type: str = "application/x-www-form-urlencoded") -> AsyncBoltRequest:
-    return AsyncBoltRequest(body=body, headers={"content-type": content_type})
+    timestamp = str(int(time.time()))
+    sig_basestring = f"v0:{timestamp}:{body}"
+    signature = "v0=" + hmac.new(
+        _SIGNING_SECRET.encode(), sig_basestring.encode(), hashlib.sha256
+    ).hexdigest()
+    return AsyncBoltRequest(
+        body=body,
+        headers={
+            "content-type": content_type,
+            "x-slack-request-timestamp": timestamp,
+            "x-slack-signature": signature,
+        },
+    )
 
 
 @pytest.fixture()
 def ack_app(mock_sqs_client, mock_slack_client):
-    """의존성이 mock된 AsyncApp."""
-    app = AsyncApp(token="xoxb-test", signing_secret=None)
-    app._client = mock_slack_client
-    register(app)
-    return app
+    """의존성이 mock된 AsyncApp.
+
+    Bolt creates a fresh AsyncWebClient per request inside _init_context,
+    so we patch the constructor at the source module to return mock_slack_client.
+    """
+    with patch("slack_bolt.app.async_app.AsyncWebClient", return_value=mock_slack_client):
+        app = AsyncApp(signing_secret=_SIGNING_SECRET, authorize=_authorize)
+        register(app)
+        yield app
 
 
 # ── Slash commands → views_open ───────────────────────────────────────────────
