@@ -1,6 +1,6 @@
 from typing import ClassVar
 from pydantic import BaseModel
-from src.controller.slash_modal_templates import _ModalField, _parse_bullets
+from src.controller.modal_templates import _ModalField, _parse_bullets
 
 
 class FeatModalInput(BaseModel):

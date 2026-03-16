@@ -1,5 +1,6 @@
 """Slack Block Kit 응답 빌더 및 이슈 포맷터."""
 
+import json
 from functools import singledispatch
 
 from src.domain.issue_templates import (
@@ -118,3 +119,58 @@ def build_issue_blocks(user: str | None, template: BaseIssueTemplate, usage_text
         ],
     })
     return blocks
+
+
+def build_reject_modal(message_ts: str, channel_id: str, user_id: str) -> dict:
+    """재요청 추가 요구사항 입력 Modal을 반환한다."""
+    return {
+        "type": "modal",
+        "callback_id": "reject_submit",
+        "private_metadata": json.dumps({"message_ts": message_ts, "channel_id": channel_id, "user_id": user_id}),
+        "title": {"type": "plain_text", "text": "재요청"},
+        "submit": {"type": "plain_text", "text": "제출"},
+        "close": {"type": "plain_text", "text": "취소"},
+        "blocks": [
+            {
+                "type": "input",
+                "block_id": "additional_requirements",
+                "optional": True,
+                "label": {"type": "plain_text", "text": "추가 요구사항"},
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "input",
+                    "multiline": True,
+                    "placeholder": {"type": "plain_text", "text": "수정 또는 추가할 내용을 입력하세요 (선택)"},
+                },
+            }
+        ],
+    }
+
+
+def build_drop_modal(message_ts: str, channel_id: str, user_id: str, items: list) -> dict:
+    """드롭할 항목 선택 Modal을 반환한다."""
+    options = [
+        {"text": {"type": "mrkdwn", "text": f"*{item.section}* {item.text}"}, "value": item.id}
+        for item in items
+    ]
+    return {
+        "type": "modal",
+        "callback_id": "drop_submit",
+        "private_metadata": json.dumps({"message_ts": message_ts, "channel_id": channel_id, "user_id": user_id}),
+        "title": {"type": "plain_text", "text": "드롭 후 재탐색"},
+        "submit": {"type": "plain_text", "text": "재탐색"},
+        "close": {"type": "plain_text", "text": "취소"},
+        "blocks": [
+            {
+                "type": "input",
+                "block_id": "drop_selection",
+                "optional": True,
+                "label": {"type": "plain_text", "text": "제거할 항목을 선택하세요"},
+                "element": {
+                    "type": "checkboxes",
+                    "action_id": "items",
+                    "options": options,
+                },
+            }
+        ],
+    }
