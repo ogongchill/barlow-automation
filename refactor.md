@@ -8,6 +8,7 @@
 |------|------|------|
 | 단일 핸들러 과부하 | `slash_handler.py` | 이벤트 수신 + 파이프라인 실행 + 상태 관리를 한 파일이 담당 |
 | 역할 불분명한 패키지명 | `slack/` | 프레젠테이션 레이어인데 네트워크 라이브러리명으로 표현됨 |
+| 소켓 모드 | `app.py`, `main.py` | Lambda 환경에서 불필요. `AsyncSocketModeHandler`, `SLACK_APP_TOKEN` 제거 필요 |
 | 중첩 서브패키지 | `agent/agents/` | `agent` 안에 `agents`가 있어 탐색이 직관적이지 않음 |
 | 데드코드 | `claude.py`, `claude_agents.py`, `tools.py` | 실제로 사용되지 않는 파일 3개 |
 | 반복 코드 | `agent_factory.py` | 동일한 패턴 8회 반복, `_build` 공통 메서드로 추출 가능 |
@@ -19,20 +20,23 @@
 ## 목표 레이어 구조
 
 ```
-┌──────────────────────────────────┐
-│  presentation/                   │  ← Controller + View
-│  handler/ (이벤트 수신 + ack)    │
-│  view/    (Block Kit 응답 빌더)  │
-├──────────────────────────────────┤
-│  service/                        │  ← 비즈니스 로직
-│  (파이프라인 실행 오케스트레이션) │
-├──────────────────────────────────┤
-│  domain/                         │  ← 도메인 모델
-│  (IssueTemplate, IssueContext)   │
-├──────────────────────────────────┤
-│  infra/          agent/          │  ← 인프라
-│  (session)       (AI 실행)       │
-└──────────────────────────────────┘
+┌──────────────────────────────────────────┐
+│  presentation/                           │  ← Controller + Block Kit 빌더
+│  lambda_ack.py  (Ack Lambda 진입점)      │
+│  handler/       (이벤트 수신 + ack)      │
+│  blocks.py      (Block Kit 응답 빌더)    │
+│  modals.py      (Modal 입력 폼 스키마)   │
+├──────────────────────────────────────────┤
+│  service/                                │  ← 비즈니스 로직
+│  (파이프라인 실행 오케스트레이션)         │
+├──────────────────────────────────────────┤
+│  domain/                                 │  ← 도메인 모델
+│  (IssueTemplate, IssueContext)           │
+├──────────────────────────────────────────┤
+│  agent/                                  │  ← 인프라 (AI 실행)
+└──────────────────────────────────────────┘
+
+lambda_worker.py  ← Worker Lambda 진입점 (src/ 루트, service 호출)
 ```
 
 ---
@@ -43,34 +47,32 @@
 src/                                       src/
 ├── config.py              ──────────────► ├── config.py              # 변경 없음
 ├── logging_config.py      ──────────────► ├── logging_config.py      # 변경 없음
-├── main.py                ──────────────► ├── main.py                # import 경로만 수정
+├── main.py                → 삭제          ├── lambda_worker.py       # NEW: Worker Lambda 진입점
 │
-├── slack/                                 ├── presentation/          # RENAME: slack/ → presentation/
-│   ├── app.py             ──────────────► │   ├── app.py             # 변경 없음
-│   ├── event_router.py    ──────────────► │   ├── router.py          # RENAME: event_router → router
-│   └── handlers/                          │   ├── view/              # NEW: View 서브패키지
-│       ├── _reply.py      ──────────────► │   │   ├── blocks.py      # RENAME + _build_reject_modal_blocks 흡수
-│       └── slash_modal_templates.py ────► │   │   └── modals.py      # RENAME
-│       └── handler/                       │   └── handler/           # RENAME: handlers/ → handler/
-│           ├── slash_handler.py ────────► │       ├── slash.py       # RENAME + 파이프라인 로직 제거
-│           ├── mention_handler.py ──────► │       ├── mention.py     # RENAME
-│           └── message_handler.py ──────► │       └── message.py     # RENAME
+├── slack/                                 ├── presentation/
+│   ├── app.py             ──────────────► │   ├── app.py             # CHANGE: SocketModeHandler 제거
+│   ├── event_router.py    ──────────────► │   ├── router.py          # RENAME
+│   └── handlers/          ──────────────► │   ├── lambda_ack.py      # NEW: Ack Lambda 진입점
+│       ├── _reply.py      ──────────────► │   ├── blocks.py          # RENAME + _build_reject_modal_blocks 흡수
+│       ├── slash_modal_templates.py ────► │   ├── modals.py          # RENAME
+│       ├── slash_handler.py ────────────► │   └── handler/
+│       ├── mention_handler.py ──────────► │       ├── slash.py       # RENAME + 파이프라인 로직 제거
+│       └── message_handler.py ──────────► │       ├── mention.py     # RENAME + session 제거
+│                                          │       └── message.py     # RENAME
 │
 │                                          ├── service/               # NEW
 │                                          │   └── issue_pipeline.py  # slash_handler에서 추출
 │
 │                                          ├── domain/                # NEW
-├── agent/agents/issue_templates.py ─────► │   └── issue.py           # MOVE + RENAME
+├── agent/agents/issue_templates.py ─────► │   └── issue.py
 │
-├── session/               ──────────────► ├── infra/                 # RENAME: session/ → infra/
-│   ├── manager.py         ──────────────► │   └── session.py         # 두 파일 통합
-│   └── models.py                          │
+├── session/               → 삭제         │                           # 제거: Lambda + idempotency로 대체
 │
 └── agent/                                 └── agent/
     ├── base.py            ──────────────►     ├── base.py            # 변경 없음
     ├── usage.py           ──────────────►     ├── usage.py           # 변경 없음
-    ├── tools.py           → 삭제              ├── registry.py        # RENAME: agent_info.py
-    ├── agents/                                ├── factory.py         # FLATTEN + 대폭 간소화
+    ├── tools.py           → 삭제              ├── registry.py        # FLATTEN: agents/agent_info.py
+    ├── agents/                                ├── factory.py         # FLATTEN + 간소화
     │   ├── agent_info.py  ──────────────►     ├── mcp.py             # FLATTEN: agents/github.py
     │   ├── agent_factory.py ────────────►     └── runner/
     │   ├── github.py                              ├── models.py      # 변경 없음
@@ -86,36 +88,45 @@ src/                                       src/
 
 ## 파일별 변경 상세
 
-### 삭제 (데드코드)
+### 삭제
 
 | 파일 | 이유 |
 |------|------|
+| `src/main.py` | 소켓 모드 진입점, Lambda 환경에서 불필요 |
 | `src/agent/tools.py` | `claude_agent_sdk` 기반, 미사용 |
 | `src/agent/runner/claude.py` | `claude_agent_sdk` 기반, 미사용 |
 | `src/agent/agents/claude_agents.py` | 미사용 |
+| `src/session/` | Lambda + idempotency 방식으로 대체 |
+
+### 수정
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `slack/app.py` → `presentation/app.py` | `AsyncSocketModeHandler` 제거, `SLACK_APP_TOKEN` 참조 제거 |
+| `slack/handlers/mention_handler.py` → `presentation/handler/mention.py` | `ISessionManager` 참조 제거 |
 
 ### 이동 + 이름 변경
 
-| 현재 | 목표 | 비고 |
-|------|------|------|
-| `slack/app.py` | `presentation/app.py` | import 경로 수정 |
-| `slack/event_router.py` | `presentation/router.py` | 함수명 유지 |
-| `slack/handlers/_reply.py` | `presentation/view/blocks.py` | `_build_reject_modal_blocks` 흡수 |
-| `slack/handlers/slash_modal_templates.py` | `presentation/view/modals.py` | 변경 없음 |
-| `slack/handlers/slash_handler.py` | `presentation/handler/slash.py` | 파이프라인 로직 제거 |
-| `slack/handlers/mention_handler.py` | `presentation/handler/mention.py` | 변경 없음 |
-| `slack/handlers/message_handler.py` | `presentation/handler/message.py` | 변경 없음 |
-| `agent/agents/issue_templates.py` | `domain/issue.py` | 변경 없음 |
-| `agent/agents/agent_info.py` | `agent/registry.py` | `agents/` 서브패키지 해소 |
-| `agent/agents/agent_factory.py` | `agent/factory.py` | 대폭 간소화 |
-| `agent/agents/github.py` | `agent/mcp.py` | `agents/` 서브패키지 해소 |
-| `session/manager.py` + `session/models.py` | `infra/session.py` | 두 파일 통합 |
+| 현재 | 목표 |
+|------|------|
+| `slack/event_router.py` | `presentation/router.py` |
+| `slack/handlers/_reply.py` | `presentation/blocks.py` (`_build_reject_modal_blocks` 흡수) |
+| `slack/handlers/slash_modal_templates.py` | `presentation/modals.py` |
+| `slack/handlers/slash_handler.py` | `presentation/handler/slash.py` (파이프라인 로직 제거) |
+| `slack/handlers/mention_handler.py` | `presentation/handler/mention.py` |
+| `slack/handlers/message_handler.py` | `presentation/handler/message.py` |
+| `agent/agents/issue_templates.py` | `domain/issue.py` |
+| `agent/agents/agent_info.py` | `agent/registry.py` |
+| `agent/agents/agent_factory.py` | `agent/factory.py` (간소화 포함) |
+| `agent/agents/github.py` | `agent/mcp.py` |
 
 ### 신규
 
 | 파일 | 내용 |
 |------|------|
-| `service/issue_pipeline.py` | `_IssueContext`, `_execute_pipeline`, `handle_reject`, `handle_drop` |
+| `src/lambda_worker.py` | Worker Lambda 진입점, SQS 이벤트 → service 호출 |
+| `presentation/lambda_ack.py` | Ack Lambda 진입점, `AsyncSlackRequestHandler` 래핑 |
+| `service/issue_pipeline.py` | `_IssueContext`, `execute_pipeline`, `handle_reject`, `handle_drop` |
 
 ---
 
@@ -225,7 +236,7 @@ handle_drop()          ──────────────►  presentati
 
 ### Step 4 — session/ 삭제
 - `src/session/` 패키지 전체 삭제
-- `ISessionManager` 참조 제거 (slash_handler, mention_handler, event_router, main.py)
+- `ISessionManager` 참조 제거 (`slash_handler`, `mention_handler`, `event_router`)
 
 ### Step 5 — service/ 생성
 - `slash_handler.py`의 `_IssueContext`, `_execute_pipeline`, `_run_issue_pipeline`, `handle_reject_modal` 로직 → `src/service/issue_pipeline.py`
@@ -233,12 +244,16 @@ handle_drop()          ──────────────►  presentati
 ### Step 6 — presentation/ 생성
 - `src/slack/` → `src/presentation/`
 - `handlers/` → `handler/`
-- `_reply.py` → `view/blocks.py` (`_build_reject_modal_blocks` 흡수)
-- `slash_modal_templates.py` → `view/modals.py`
+- `_reply.py` → `blocks.py` (`_build_reject_modal_blocks` 흡수)
+- `slash_modal_templates.py` → `modals.py`
 - `slash_handler.py` → `handler/slash.py` (경량화 버전)
 - `event_router.py` → `router.py`
+- `app.py`: `AsyncSocketModeHandler` 제거 → `AsyncSlackRequestHandler` 전환
 
-### Step 7 — main.py import 경로 정리
+### Step 7 — Lambda 진입점 추가
+- `presentation/lambda_ack.py` 신규 생성
+- `src/lambda_worker.py` 신규 생성
+- `src/main.py` 삭제
 
 ---
 
@@ -248,16 +263,16 @@ handle_drop()          ──────────────►  presentati
 src/
 ├── config.py
 ├── logging_config.py
-├── main.py
+├── lambda_worker.py         # Worker Lambda 진입점
 │
 ├── presentation/
+│   ├── lambda_ack.py        # Ack Lambda 진입점
 │   ├── app.py
 │   ├── router.py
-│   ├── view/
-│   │   ├── blocks.py       # build_issue_blocks, build_reject_modal_blocks
-│   │   └── modals.py       # FeatModalInput, RefactorModalInput, FixModalInput
+│   ├── blocks.py            # build_issue_blocks, build_reject_modal_blocks
+│   ├── modals.py            # FeatModalInput, RefactorModalInput, FixModalInput
 │   └── handler/
-│       ├── slash.py        # ack + views_open + service 호출
+│       ├── slash.py         # ack + views_open + service 호출
 │       ├── mention.py
 │       └── message.py
 │

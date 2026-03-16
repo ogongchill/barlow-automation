@@ -2,10 +2,8 @@
 import enum
 from dataclasses import dataclass
 from typing import Literal
-from src.agent.agents.issue_templates import FeatTemplate, RefactorTemplate, FixTemplate
+from src.domain.issue_templates import FeatTemplate, RefactorTemplate, FixTemplate
 from pydantic import BaseModel, Field
-from src.config import config
-
 
 @dataclass(frozen=True)
 class AgentInfo:
