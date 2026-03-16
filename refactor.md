@@ -21,7 +21,7 @@
 
 ```
 ┌──────────────────────────────────────────┐
-│  presentation/                           │  ← Controller + Block Kit 빌더
+│  controller/                           │  ← Controller + Block Kit 빌더
 │  lambda_ack.py  (Ack Lambda 진입점)      │
 │  handler/       (이벤트 수신 + ack)      │
 │  blocks.py      (Block Kit 응답 빌더)    │
@@ -49,7 +49,7 @@ src/                                       src/
 ├── logging_config.py      ──────────────► ├── logging_config.py      # 변경 없음
 ├── main.py                → 삭제          ├── lambda_worker.py       # NEW: Worker Lambda 진입점
 │
-├── slack/                                 ├── presentation/
+├── slack/                                 ├── controller/
 │   ├── app.py             ──────────────► │   ├── app.py             # CHANGE: SocketModeHandler 제거
 │   ├── event_router.py    ──────────────► │   ├── router.py          # RENAME
 │   └── handlers/          ──────────────► │   ├── lambda_ack.py      # NEW: Ack Lambda 진입점
@@ -102,19 +102,19 @@ src/                                       src/
 
 | 파일 | 변경 내용 |
 |------|----------|
-| `slack/app.py` → `presentation/app.py` | `AsyncSocketModeHandler` 제거, `SLACK_APP_TOKEN` 참조 제거 |
-| `slack/handlers/mention_handler.py` → `presentation/handler/mention.py` | `ISessionManager` 참조 제거 |
+| `slack/app.py` → `controller/app.py` | `AsyncSocketModeHandler` 제거, `SLACK_APP_TOKEN` 참조 제거 |
+| `slack/handlers/mention_handler.py` → `controller/handler/mention.py` | `ISessionManager` 참조 제거 |
 
 ### 이동 + 이름 변경
 
 | 현재 | 목표 |
 |------|------|
-| `slack/event_router.py` | `presentation/router.py` |
-| `slack/handlers/_reply.py` | `presentation/blocks.py` (`_build_reject_modal_blocks` 흡수) |
-| `slack/handlers/slash_modal_templates.py` | `presentation/modals.py` |
-| `slack/handlers/slash_handler.py` | `presentation/handler/slash.py` (파이프라인 로직 제거) |
-| `slack/handlers/mention_handler.py` | `presentation/handler/mention.py` |
-| `slack/handlers/message_handler.py` | `presentation/handler/message.py` |
+| `slack/event_router.py` | `controller/router.py` |
+| `slack/handlers/_reply.py` | `controller/blocks.py` (`_build_reject_modal_blocks` 흡수) |
+| `slack/handlers/slash_modal_templates.py` | `controller/modals.py` |
+| `slack/handlers/slash_handler.py` | `controller/handler/slash.py` (파이프라인 로직 제거) |
+| `slack/handlers/mention_handler.py` | `controller/handler/mention.py` |
+| `slack/handlers/message_handler.py` | `controller/handler/message.py` |
 | `agent/agents/issue_templates.py` | `domain/issue.py` |
 | `agent/agents/agent_info.py` | `agent/registry.py` |
 | `agent/agents/agent_factory.py` | `agent/factory.py` (간소화 포함) |
@@ -125,7 +125,7 @@ src/                                       src/
 | 파일 | 내용 |
 |------|------|
 | `src/lambda_worker.py` | Worker Lambda 진입점, SQS 이벤트 → service 호출 |
-| `presentation/lambda_ack.py` | Ack Lambda 진입점, `AsyncSlackRequestHandler` 래핑 |
+| `controller/lambda_ack.py` | Ack Lambda 진입점, `AsyncSlackRequestHandler` 래핑 |
 | `service/issue_pipeline.py` | `_IssueContext`, `execute_pipeline`, `handle_reject`, `handle_drop` |
 
 ---
@@ -202,15 +202,15 @@ _IssueContext          ──────────────►  service/is
 _pending dict          ──────────────►  service/issue_pipeline.py
 _issue_agent()         ──────────────►  service/issue_pipeline.py (AgentFactory.issue_gen으로 대체)
 _reissue_agent()       ──────────────►  service/issue_pipeline.py (AgentFactory.reissue_gen으로 대체)
-_build_reject_modal_blocks() ────────►  presentation/view/blocks.py
+_build_reject_modal_blocks() ────────►  controller/blocks.py
 _execute_pipeline()    ──────────────►  service/issue_pipeline.py
 _run_issue_pipeline()  ──────────────►  service/issue_pipeline.py
-handle_feat/refactor/fix ────────────►  presentation/handler/slash.py (ack + views_open만)
-handle_feat/refactor/fix_submit ─────►  presentation/handler/slash.py (ack + pipeline 호출)
-handle_accept()        ──────────────►  presentation/handler/slash.py
-handle_reject()        ──────────────►  presentation/handler/slash.py (ack + views_open만)
-handle_reject_modal()  ──────────────►  presentation/handler/slash.py (ack + pipeline 호출)
-handle_drop()          ──────────────►  presentation/handler/slash.py
+handle_feat/refactor/fix ────────────►  controller/handler/slash.py (ack + views_open만)
+handle_feat/refactor/fix_submit ─────►  controller/handler/slash.py (ack + pipeline 호출)
+handle_accept()        ──────────────►  controller/handler/slash.py
+handle_reject()        ──────────────►  controller/handler/slash.py (ack + views_open만)
+handle_reject_modal()  ──────────────►  controller/handler/slash.py (ack + pipeline 호출)
+handle_drop()          ──────────────►  controller/handler/slash.py
 ```
 
 ---
@@ -241,8 +241,8 @@ handle_drop()          ──────────────►  presentati
 ### Step 5 — service/ 생성
 - `slash_handler.py`의 `_IssueContext`, `_execute_pipeline`, `_run_issue_pipeline`, `handle_reject_modal` 로직 → `src/service/issue_pipeline.py`
 
-### Step 6 — presentation/ 생성
-- `src/slack/` → `src/presentation/`
+### Step 6 — controller/ 생성
+- `src/slack/` → `src/controller/`
 - `handlers/` → `handler/`
 - `_reply.py` → `blocks.py` (`_build_reject_modal_blocks` 흡수)
 - `slash_modal_templates.py` → `modals.py`
@@ -251,7 +251,7 @@ handle_drop()          ──────────────►  presentati
 - `app.py`: `AsyncSocketModeHandler` 제거 → `AsyncSlackRequestHandler` 전환
 
 ### Step 7 — Lambda 진입점 추가
-- `presentation/lambda_ack.py` 신규 생성
+- `controller/lambda_ack.py` 신규 생성
 - `src/lambda_worker.py` 신규 생성
 - `src/main.py` 삭제
 
@@ -265,7 +265,7 @@ src/
 ├── logging_config.py
 ├── lambda_worker.py         # Worker Lambda 진입점
 │
-├── presentation/
+├── controller/
 │   ├── lambda_ack.py        # Ack Lambda 진입점
 │   ├── app.py
 │   ├── router.py
