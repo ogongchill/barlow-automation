@@ -8,20 +8,17 @@ barlow-automation 배포에 필요한 AWS 리소스 목록 및 설정값 정리.
 
 ```
 Slack App
-    │ HTTP (HTTPS)
+    │ HTTPS (Function URL)
     ▼
-API Gateway (HTTP API)
-    │
-    ▼
-Ack Lambda  ──────────────────► SQS Queue (barlow-queue)
-(src/controller/lambda_ack.py)          │
-                                         ▼
-                               Worker Lambda
-                               (src/lambda_worker.py)
-                                    │         │
-                                    ▼         ▼
-                             DynamoDB      DynamoDB
-                           barlow-pending  barlow-idempotency
+Ack Lambda (Function URL)  ──────────► SQS Queue (barlow-queue)
+(src/controller/lambda_ack.py)                  │
+                                                 ▼
+                                       Worker Lambda
+                                       (src/lambda_worker.py)
+                                            │         │
+                                            ▼         ▼
+                                     DynamoDB      DynamoDB
+                                   barlow-pending  barlow-idempotency
 ```
 
 ---
@@ -127,8 +124,8 @@ ttl     Number    Unix timestamp (TTL 속성)
 | 진입점 | `src/controller/lambda_ack.handler` |
 | 런타임 | Python 3.12 |
 | 메모리 | 256 MB |
-| 타임아웃 | 29초 (API Gateway 최대 제한) |
-| 트리거 | API Gateway HTTP API |
+| 타임아웃 | 29초 (Slack 3초 응답 + 여유) |
+| 트리거 | Lambda Function URL |
 
 **환경 변수**
 
@@ -215,28 +212,50 @@ TARGET_REPO
 
 ---
 
-## 4. API Gateway
+## 4. Lambda Function URL (Ack Lambda)
+
+API Gateway 없이 Lambda에 직접 HTTPS 엔드포인트를 부여합니다.
 
 | 항목 | 값 |
 |------|-----|
-| 타입 | HTTP API (REST API보다 저렴, 지연 낮음) |
-| 경로 | `POST /slack/events` |
-| 통합 | Lambda Proxy → `barlow-ack` |
-| 스테이지 | `$default` (또는 `prod`) |
+| Auth 타입 | `NONE` — Slack 서명 검증은 Bolt 미들웨어가 처리 |
+| CORS | 비활성화 (Slack 서버가 직접 호출, 브라우저 아님) |
+| URL 형식 | `https://<url-id>.lambda-url.<region>.on.aws/` |
 
-Ack Lambda의 엔드포인트 URL (`https://<api-id>.execute-api.<region>.amazonaws.com/slack/events`)을
-Slack 앱 설정에 등록합니다.
+**이벤트 형식 (Lambda Function URL v2)**
+
+```json
+{
+  "version": "2.0",
+  "requestContext": {
+    "http": {
+      "method": "POST",
+      "path": "/"
+    }
+  },
+  "headers": {
+    "content-type": "application/x-www-form-urlencoded",
+    "x-slack-request-timestamp": "...",
+    "x-slack-signature": "v0=..."
+  },
+  "body": "command=%2Ffeat&...",
+  "isBase64Encoded": false
+}
+```
+
+Bolt의 `AsyncBoltRequest`가 `body`와 `headers`를 직접 추출하므로
+API Gateway 없이도 동작합니다.
 
 ---
 
 ## 5. Slack 앱 설정
 
-API Gateway 엔드포인트 URL 발급 후 [Slack API 콘솔](https://api.slack.com/apps)에서 설정.
+Function URL 발급 후 [Slack API 콘솔](https://api.slack.com/apps)에서 설정.
 
 ### Interactivity & Shortcuts
 
 ```
-Request URL: https://<api-id>.execute-api.<region>.amazonaws.com/slack/events
+Request URL: https://<url-id>.lambda-url.<region>.on.aws/
 ```
 
 Modal 제출, Block Action 버튼 클릭 이벤트를 수신합니다.
@@ -247,7 +266,7 @@ Modal 제출, Block Action 버튼 클릭 이벤트를 수신합니다.
 
 | Command | Request URL |
 |---------|-------------|
-| `/feat` | `https://<api-id>.execute-api.<region>.amazonaws.com/slack/events` |
+| `/feat` | `https://<url-id>.lambda-url.<region>.on.aws/` |
 | `/refactor` | 동일 |
 | `/fix` | 동일 |
 
@@ -292,15 +311,15 @@ Lambda 실행 역할에 `secretsmanager:GetSecretValue` 권한 추가 필요.
     [ ] 환경 변수 설정
     [ ] IAM 역할 및 정책 연결
 
-[ ] API Gateway 생성
-    [ ] POST /slack/events → barlow-ack 연결
-    [ ] 엔드포인트 URL 확인
+[ ] Ack Lambda Function URL 활성화
+    [ ] Auth 타입: NONE
+    [ ] URL 확인 (https://<url-id>.lambda-url.<region>.on.aws/)
 
 [ ] SQS 트리거 등록
     [ ] barlow-queue → barlow-worker (batch size: 1)
 
 [ ] Slack 앱 설정
-    [ ] Interactivity Request URL 등록
+    [ ] Interactivity Request URL → Function URL 등록
     [ ] Slash Commands Request URL 등록 (/feat, /refactor, /fix)
     [ ] Bot OAuth Scopes 확인 및 앱 재설치
 
