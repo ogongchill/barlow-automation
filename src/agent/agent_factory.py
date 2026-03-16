@@ -49,3 +49,12 @@ class AgentFactory:
             "fix": AvailableAgents.FIX_REISSUE_GEN,
         }[subcommand]
         return AgentFactory._build(key, GitHubMCPFactory.readProject())
+
+    @staticmethod
+    def issue_writer(subcommand: str) -> OpenAIAgent:
+        key = {
+            "feat": AvailableAgents.FEAT_ISSUE_WRITER,
+            "refactor": AvailableAgents.REFACTOR_ISSUE_WRITER,
+            "fix": AvailableAgents.FIX_ISSUE_WRITER,
+        }[subcommand]
+        return AgentFactory._build(key, GitHubMCPFactory.writeIssue())

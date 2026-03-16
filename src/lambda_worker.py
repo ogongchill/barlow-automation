@@ -12,6 +12,7 @@ from src.controller.issue_drop import drop_items
 from src.domain.pending import PendingRecord
 from src.logging_config import setup_logging
 from src.services.issue_generator import run_issue_generator
+from src.services.issue_creator import run_issue_creator
 from src.services.re_issue_generator import run_re_issue_generator
 from src.services.read_planner import run_read_planner
 from src.storage.idempotency_dynamo_repository import DynamoIdempotencyRepository
@@ -53,11 +54,17 @@ async def _handle_accept(event: dict, client: AsyncWebClient) -> None:
     message_ts = event["message_ts"]
     channel_id = event["channel_id"]
 
+    record = await _pending_repo.get(message_ts)
+    if not record:
+        logger.warning("accept | pending record not found ts=%s", message_ts)
+        return
+
+    issue_url = await run_issue_creator(record)
     await _pending_repo.delete(message_ts)
     await client.chat_update(
         channel=channel_id,
         ts=message_ts,
-        text="✅ 이슈가 수락되었습니다.",
+        text=f"✅ GitHub 이슈가 생성되었습니다: {issue_url}",
         blocks=[],
     )
 
@@ -158,6 +165,14 @@ async def _process(body: str) -> None:
         await handler_fn(event, client)
         if dedup_id:
             await _idempotency_repo.mark_done(dedup_id)
+    except Exception as e:
+        logger.error("pipeline failed type=%s error=%s", event_type, e, exc_info=True)
+        channel_id = event.get("channel_id", "")
+        if channel_id:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text="⚠️ 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+            )
     finally:
         await GitHubMCPFactory.disconnect()
 

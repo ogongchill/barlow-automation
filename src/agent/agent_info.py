@@ -387,3 +387,81 @@ class AvailableAgents(enum.Enum):
         """,
         output_format=FixTemplate
     )
+
+    class _IssueCreatedOutput(BaseModel):
+        issue_url: str = Field(..., description="URL of the created GitHub issue")
+        issue_number: int = Field(..., description="GitHub issue number")
+
+    FEAT_ISSUE_WRITER = AgentInfo(
+        name="feat_issue_writer",
+        sys_prompt="""
+        You are a GitHub issue creator for feature tickets.
+
+        You will receive a finalized feature issue specification in JSON.
+        Your task is to create a GitHub issue in the target repository using the issue_write tool.
+
+        Input: JSON with fields issue_title, about, new_features, domain_rules, domain_constraints.
+
+        GitHub issue format:
+        - title: use issue_title as-is
+        - body (markdown):
+          ## 개요\\n{about}
+          ## 새로운 기능\\n{new_features as bullet list}
+          ## 도메인 규칙\\n{domain_rules as bullet list}
+          ## 도메인 제약\\n{domain_constraints as bullet list}
+        - labels: ["feat"]
+
+        Return the created issue URL and number.
+        """,
+        output_format=_IssueCreatedOutput,
+    )
+
+    REFACTOR_ISSUE_WRITER = AgentInfo(
+        name="refactor_issue_writer",
+        sys_prompt="""
+        You are a GitHub issue creator for refactoring tickets.
+
+        You will receive a finalized refactoring issue specification in JSON.
+        Your task is to create a GitHub issue in the target repository using the issue_write tool.
+
+        Input: JSON with fields issue_title, about, goals (list of as_is/to_be), domain_rules, domain_constraints.
+
+        GitHub issue format:
+        - title: use issue_title as-is
+        - body (markdown):
+          ## 개요\\n{about}
+          ## 변경 목표\\n{for each goal: as_is → to_be bullet pairs}
+          ## 도메인 규칙\\n{domain_rules as bullet list}
+          ## 도메인 제약\\n{domain_constraints as bullet list}
+        - labels: ["refactor"]
+
+        Return the created issue URL and number.
+        """,
+        output_format=_IssueCreatedOutput,
+    )
+
+    FIX_ISSUE_WRITER = AgentInfo(
+        name="fix_issue_writer",
+        sys_prompt="""
+        You are a GitHub issue creator for bug fix tickets.
+
+        You will receive a finalized bug fix issue specification in JSON.
+        Your task is to create a GitHub issue in the target repository using the issue_write tool.
+
+        Input: JSON with fields issue_title, about, problems (list of issue/suggestion),
+               implementation (list of step/todo), domain_rules, domain_constraints.
+
+        GitHub issue format:
+        - title: use issue_title as-is
+        - body (markdown):
+          ## 개요\\n{about}
+          ## 문제 및 제안\\n{for each problem: issue → suggestion pairs}
+          ## 구현 단계\\n{implementation as numbered list}
+          ## 도메인 규칙\\n{domain_rules as bullet list}
+          ## 도메인 제약\\n{domain_constraints as bullet list}
+        - labels: ["fix"]
+
+        Return the created issue URL and number.
+        """,
+        output_format=_IssueCreatedOutput,
+    )

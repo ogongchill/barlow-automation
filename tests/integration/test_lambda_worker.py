@@ -116,6 +116,34 @@ async def test_accept_updates_slack_message(worker_ctx):
     assert call_kwargs["ts"] == "msg_ts_123"
 
 
+# ── accept — GitHub issue creation ────────────────────────────────────────────
+
+async def test_accept_fetches_pending_record(worker_ctx):
+    await _process(_event(
+        type="accept", message_ts="msg_ts_123",
+        user_id="U1", channel_id="C1", dedup_id="d2",
+    ))
+    worker_ctx["pending"].get.assert_awaited_once_with("msg_ts_123")
+
+
+async def test_accept_calls_issue_creator(worker_ctx):
+    await _process(_event(
+        type="accept", message_ts="msg_ts_123",
+        user_id="U1", channel_id="C1", dedup_id="d2",
+    ))
+    worker_ctx["services"]["run_issue_creator"].assert_awaited_once()
+
+
+async def test_accept_updates_slack_with_issue_url(worker_ctx):
+    await _process(_event(
+        type="accept", message_ts="msg_ts_123",
+        user_id="U1", channel_id="C1", dedup_id="d2",
+    ))
+    call_kwargs = worker_ctx["client"].chat_update.call_args.kwargs
+    content = str(call_kwargs)
+    assert "github.com" in content
+
+
 # ── reject ────────────────────────────────────────────────────────────────────
 
 async def test_reject_calls_reissue_generator(worker_ctx):
@@ -228,3 +256,27 @@ async def test_duplicate_dedup_id_skips_all_services(worker_ctx):
 async def test_unknown_event_type_is_ignored(worker_ctx):
     await _process(_event(type="unknown_type", dedup_id="d99"))
     worker_ctx["services"]["run_read_planner"].assert_not_awaited()
+
+
+# ── error handling ───────────────────────────────────────────────────────────
+
+async def test_pipeline_start_posts_error_message_when_agent_fails(worker_ctx):
+    worker_ctx["services"]["run_read_planner"].side_effect = Exception("API timeout")
+    await _process(_event(
+        type="pipeline_start", subcommand="feat",
+        user_id="U1", channel_id="C1",
+        user_message="msg", dedup_id="d_err1",
+    ))
+    worker_ctx["client"].chat_postMessage.assert_awaited()
+    call_kwargs = worker_ctx["client"].chat_postMessage.call_args.kwargs
+    assert call_kwargs["channel"] == "C1"
+
+
+async def test_reject_posts_error_message_when_agent_fails(worker_ctx):
+    worker_ctx["services"]["run_re_issue_generator"].side_effect = Exception("API error")
+    await _process(_event(
+        type="reject", message_ts="msg_ts_123",
+        user_id="U1", channel_id="C1",
+        additional_requirements=None, dedup_id="d_err2",
+    ))
+    worker_ctx["client"].chat_postMessage.assert_awaited()

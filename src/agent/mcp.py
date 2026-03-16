@@ -133,15 +133,20 @@ class GithubToolSet(Enum):
         _GET_FILE_CONTENTS
     ]
 
+    WRITE_ISSUE = [
+        _ISSUE_WRITE,
+        _GET_LABEL,
+    ]
 
-def _build_server(toolset: GithubToolSet) -> MCPServerStreamableHttp:
+
+def _build_server(toolset: GithubToolSet, readonly: bool = True) -> MCPServerStreamableHttp:
     return MCPServerStreamableHttp(
         params=MCPServerStreamableHttpParams(
             url="https://api.githubcopilot.com/mcp/",
             headers={
                 "Authorization": config.github_token,
                 "X-MCP-Tools": ", ".join(toolset.value),
-                "X-MCP-Readonly": "true",
+                **({"X-MCP-Readonly": "true"} if readonly else {}),
             },
         ),
         name="github",
@@ -154,18 +159,21 @@ class GitHubMCPFactory:
 
     _read_tree: MCPServerStreamableHttp = _build_server(GithubToolSet.READ_TREE)
     _read_files: MCPServerStreamableHttp = _build_server(GithubToolSet.READ_FILES)
+    _write_issue: MCPServerStreamableHttp = _build_server(GithubToolSet.WRITE_ISSUE, readonly=False)
 
     @classmethod
     async def connect(cls) -> None:
         """앱 시작 시 모든 MCP 서버를 연결한다."""
         await cls._read_tree.connect()
         await cls._read_files.connect()
+        await cls._write_issue.connect()
 
     @classmethod
     async def disconnect(cls) -> None:
         """앱 종료 시 모든 MCP 서버를 해제한다."""
         await cls._read_tree.cleanup()
         await cls._read_files.cleanup()
+        await cls._write_issue.cleanup()
 
     @classmethod
     def readProjectTree(cls) -> MCPServerStreamableHttp:
@@ -174,3 +182,7 @@ class GitHubMCPFactory:
     @classmethod
     def readProject(cls) -> MCPServerStreamableHttp:
         return cls._read_files
+
+    @classmethod
+    def writeIssue(cls) -> MCPServerStreamableHttp:
+        return cls._write_issue

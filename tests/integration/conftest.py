@@ -72,12 +72,15 @@ def mock_services():
         patch("src.lambda_worker.run_read_planner", new_callable=AsyncMock) as mock_planner,
         patch("src.lambda_worker.run_issue_generator", new_callable=AsyncMock) as mock_issue_gen,
         patch("src.lambda_worker.run_re_issue_generator", new_callable=AsyncMock) as mock_reissue_gen,
+        patch("src.lambda_worker.run_issue_creator", new_callable=AsyncMock, create=True) as mock_issue_creator,
     ):
         mock_planner.return_value = ("inspector output text", AgentUsage(input_tokens=100, output_tokens=50))
         mock_issue_gen.return_value = (_default_feat_template(), AgentUsage(input_tokens=50, output_tokens=30))
         mock_reissue_gen.return_value = (_default_feat_template(), AgentUsage(input_tokens=40, output_tokens=20))
+        mock_issue_creator.return_value = "https://github.com/ogongchill/barlow/issues/42"
         yield {
             "run_read_planner": mock_planner,
             "run_issue_generator": mock_issue_gen,
             "run_re_issue_generator": mock_reissue_gen,
+            "run_issue_creator": mock_issue_creator,
         }
