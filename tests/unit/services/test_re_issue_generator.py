@@ -17,7 +17,7 @@ def _make_pending(feat_template: FeatTemplate) -> PendingRecord:
         user_id="U1",
         channel_id="C1",
         user_message="original prompt",
-        inspector_output="inspector context here",
+        bc_finder_output="bc finder context here",
         typed_output=feat_template,
     )
 
@@ -42,8 +42,8 @@ class TestRunReIssueGenerator:
         await run_re_issue_generator(record, "add caching")
 
         call_args = mock_agent.run.call_args[0][0]
-        assert "[Inspector Context]" in call_args
-        assert "inspector context here" in call_args
+        assert "[BC Finder Context]" in call_args
+        assert "bc finder context here" in call_args
 
     @patch("src.services.re_issue_generator.AgentFactory")
     async def test_prompt_contains_current_issue_draft(

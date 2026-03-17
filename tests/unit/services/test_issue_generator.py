@@ -40,7 +40,7 @@ class TestRunIssueGenerator:
 
         from src.services.issue_generator import run_issue_generator
 
-        await run_issue_generator("feat", "inspector output")
+        await run_issue_generator("feat", "bc finder output")
         mock_factory.issue_gen.assert_called_once_with("feat")
 
     @patch("src.services.issue_generator.AgentFactory")
@@ -55,5 +55,5 @@ class TestRunIssueGenerator:
 
         from src.services.issue_generator import run_issue_generator
 
-        await run_issue_generator("refactor", "some inspector text")
-        mock_agent.run.assert_awaited_once_with("some inspector text")
+        await run_issue_generator("refactor", "some bc finder text")
+        mock_agent.run.assert_awaited_once_with("some bc finder text")

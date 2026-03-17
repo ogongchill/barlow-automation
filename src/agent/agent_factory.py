@@ -25,9 +25,9 @@ class AgentFactory:
         )
 
     @staticmethod
-    def inspector() -> OpenAIAgent:
+    def relevant_bc_finder() -> OpenAIAgent:
         return AgentFactory._build(
-            AvailableAgents.READ_TARGET_INSPECTOR,
+            AvailableAgents.RELEVANT_BC_FINDER,
             GitHubMCPFactory.readProjectTree()
         )
 

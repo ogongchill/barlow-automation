@@ -57,7 +57,7 @@ async def test_pipeline_start_calls_issue_gen_with_inspector_output(worker_ctx):
         user_message="msg", dedup_id="d1",
     ))
     worker_ctx["services"]["run_issue_generator"].assert_awaited_once_with(
-        "feat", "inspector output text"
+        "feat", "bc finder output text"
     )
 
 

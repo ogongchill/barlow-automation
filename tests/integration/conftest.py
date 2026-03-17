@@ -26,16 +26,16 @@ def _default_pending_record() -> PendingRecord:
         user_id="U1",
         channel_id="C1",
         user_message="[feat] Test\n\n배경: test\n\n기능:\n- A",
-        inspector_output="inspector context",
+        bc_finder_output="bc finder context",
         typed_output=_default_feat_template(),
     )
 
 
 @pytest.fixture()
 def mock_sqs_client():
-    with patch("src.controller.handler.slash._sqs") as mock_sqs:
-        mock_sqs.send_message = MagicMock()
-        yield mock_sqs
+    with patch("src.controller.handler.slash._queue") as mock_queue:
+        mock_queue.send = MagicMock()
+        yield mock_queue
 
 
 @pytest.fixture()
@@ -74,7 +74,7 @@ def mock_services():
         patch("src.lambda_worker.run_re_issue_generator", new_callable=AsyncMock) as mock_reissue_gen,
         patch("src.lambda_worker.run_issue_creator", new_callable=AsyncMock, create=True) as mock_issue_creator,
     ):
-        mock_planner.return_value = ("inspector output text", AgentUsage(input_tokens=100, output_tokens=50))
+        mock_planner.return_value = ("bc finder output text", AgentUsage(input_tokens=100, output_tokens=50))
         mock_issue_gen.return_value = (_default_feat_template(), AgentUsage(input_tokens=50, output_tokens=30))
         mock_reissue_gen.return_value = (_default_feat_template(), AgentUsage(input_tokens=40, output_tokens=20))
         mock_issue_creator.return_value = "https://github.com/ogongchill/barlow/issues/42"

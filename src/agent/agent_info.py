@@ -30,10 +30,10 @@ class AvailableAgents(enum.Enum):
         request_summary: str = Field(..., description="A concise restatement of the user's request")
         searchTarget: list[_SearchTarget] = Field(..., description="suspected target groups related to user request")
 
-    READ_TARGET_INSPECTOR = AgentInfo(
-        name="read_target_inspector",
+    RELEVANT_BC_FINDER = AgentInfo(
+        name="relevant_bc_finder",
         sys_prompt="""
-        You are the Read Target Inspector to discover source-code-related directories.
+        You are the Relevant BC Finder to discover source-code-related directories.
         Target Repository: https://github.com/ogongchill/barlow
 
         - Do not guess implementation details beyond what the repository structure reasonably supports.
@@ -110,7 +110,7 @@ class AvailableAgents(enum.Enum):
         You are refining an existing feature issue draft based on user feedback.
 
         Input format:
-        - [Inspector Context]: original request_summary and searchTarget[] with found_dir
+        - [BC Finder Context]: original request_summary and searchTarget[] with found_dir
         - [Current Issue Draft]: the filtered issue draft the user has already approved
         - Additional requirements (optional): "Additional requirements: ..."
 
@@ -118,7 +118,7 @@ class AvailableAgents(enum.Enum):
         1. Treat [Current Issue Draft] as your starting point. All items in the draft are kept as-is
            unless explicitly changed by additional requirements.
         2. Incorporate additional requirements as new or modified entries (highest priority).
-        3. Re-inspect code files via [Inspector Context] ONLY if additional requirements
+        3. Re-check code files via [BC Finder Context] ONLY if additional requirements
            introduce scope not covered by the draft. Otherwise, skip re-inspection.
         4. Return the refined issue preserving draft content and integrating new requirements.
 
@@ -195,7 +195,7 @@ class AvailableAgents(enum.Enum):
         You are refining an existing refactoring issue draft based on user feedback.
 
         Input format:
-        - [Inspector Context]: original request_summary and searchTarget[] with found_dir
+        - [BC Finder Context]: original request_summary and searchTarget[] with found_dir
         - [Current Issue Draft]: the filtered issue draft the user has already approved
         - Additional requirements (optional): "Additional requirements: ..."
 
@@ -203,7 +203,7 @@ class AvailableAgents(enum.Enum):
         1. Treat [Current Issue Draft] as your starting point. All goals, rules, and constraints
            in the draft are kept as-is unless explicitly changed by additional requirements.
         2. Incorporate additional requirements as new or modified goals/rules (highest priority).
-        3. Re-inspect code files via [Inspector Context] ONLY if additional requirements
+        3. Re-check code files via [BC Finder Context] ONLY if additional requirements
            introduce scope not covered by the draft. Otherwise, skip re-inspection.
         4. Return the refined issue preserving draft content and integrating new requirements.
 
@@ -283,7 +283,7 @@ class AvailableAgents(enum.Enum):
         You are refining an existing bug fix issue draft based on user feedback.
 
         Input format:
-        - [Inspector Context]: original request_summary and searchTarget[] with found_dir
+        - [BC Finder Context]: original request_summary and searchTarget[] with found_dir
         - [Current Issue Draft]: the filtered issue draft the user has already approved
         - Additional requirements (optional): "Additional requirements: ..."
 
@@ -292,7 +292,7 @@ class AvailableAgents(enum.Enum):
            rules, and constraints in the draft are kept as-is unless explicitly changed by
            additional requirements.
         2. Incorporate additional requirements as new or modified entries (highest priority).
-        3. Re-inspect code files via [Inspector Context] ONLY if additional requirements
+        3. Re-check code files via [BC Finder Context] ONLY if additional requirements
            introduce scope not covered by the draft. Otherwise, skip re-inspection.
         4. Return the refined issue preserving draft content and integrating new requirements.
 

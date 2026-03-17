@@ -16,7 +16,7 @@ def _make_record(template, subcommand: str = "feat") -> PendingRecord:
         user_id="U1",
         channel_id="C1",
         user_message="[feat] bookmark",
-        inspector_output="inspector context",
+        bc_finder_output="bc finder context",
         typed_output=template,
     )
 

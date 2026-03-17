@@ -195,8 +195,6 @@ async def test_dispatch_accept_action_sends_to_sqs(ack_handler_ctx):
     resp = await _dispatch(_function_url_event(body))
 
     assert resp["statusCode"] == 200
-    ack_handler_ctx["sqs"].send_message.assert_called_once()
-    msg = json.loads(
-        ack_handler_ctx["sqs"].send_message.call_args.kwargs["MessageBody"]
-    )
+    ack_handler_ctx["sqs"].send.assert_called_once()
+    msg = ack_handler_ctx["sqs"].send.call_args.args[0]
     assert msg["type"] == "accept"

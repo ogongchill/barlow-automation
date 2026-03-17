@@ -13,7 +13,7 @@ def _make_record(subcommand: str, typed_output) -> PendingRecord:
         user_id="U1",
         channel_id="C1",
         user_message="test prompt",
-        inspector_output="inspector context",
+        bc_finder_output="bc finder context",
         typed_output=typed_output,
     )
 
@@ -34,7 +34,7 @@ class TestFeatRoundtrip:
         item = record.to_item()
         expected_keys = {
             "pk", "subcommand", "user_id", "channel_id",
-            "user_message", "inspector_output", "typed_output", "ttl",
+            "user_message", "bc_finder_output", "typed_output", "ttl",
         }
         assert set(item.keys()) == expected_keys
 

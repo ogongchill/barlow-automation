@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 def _build_prompt(record: PendingRecord, additional_requirements: str | None) -> str:
     """reissue_gen 에이전트에 전달할 프롬프트를 구성한다."""
     parts = [
-        f"[Inspector Context]\n{record.inspector_output}",
+        f"[BC Finder Context]\n{record.bc_finder_output}",
         f"[Current Issue Draft]\n{record.typed_output.model_dump_json(indent=2)}",
     ]
     if additional_requirements:

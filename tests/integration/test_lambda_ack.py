@@ -145,8 +145,8 @@ async def test_feat_submit_sends_pipeline_start_to_sqs(ack_app, mock_sqs_client)
     body = _view_body("feat_submit", _feat_values(), private_metadata=json.dumps({"channel_id": "C1"}))
     await ack_app.async_dispatch(_req(body))
 
-    mock_sqs_client.send_message.assert_called_once()
-    payload = json.loads(mock_sqs_client.send_message.call_args.kwargs["MessageBody"])
+    mock_sqs_client.send.assert_called_once()
+    payload = json.loads(json.dumps(mock_sqs_client.send.call_args.args[0]))
     assert payload["type"] == "pipeline_start"
     assert payload["subcommand"] == "feat"
     assert payload["channel_id"] == "C1"
@@ -166,7 +166,7 @@ async def test_refactor_submit_sends_pipeline_start(ack_app, mock_sqs_client):
     body = _view_body("refactor_submit", values, private_metadata=json.dumps({"channel_id": "C1"}))
     await ack_app.async_dispatch(_req(body))
 
-    payload = json.loads(mock_sqs_client.send_message.call_args.kwargs["MessageBody"])
+    payload = json.loads(json.dumps(mock_sqs_client.send.call_args.args[0]))
     assert payload["type"] == "pipeline_start"
     assert payload["subcommand"] == "refactor"
 
@@ -182,7 +182,7 @@ async def test_fix_submit_sends_pipeline_start(ack_app, mock_sqs_client):
     body = _view_body("fix_submit", values, private_metadata=json.dumps({"channel_id": "C1"}))
     await ack_app.async_dispatch(_req(body))
 
-    payload = json.loads(mock_sqs_client.send_message.call_args.kwargs["MessageBody"])
+    payload = json.loads(json.dumps(mock_sqs_client.send.call_args.args[0]))
     assert payload["type"] == "pipeline_start"
     assert payload["subcommand"] == "fix"
 
@@ -192,7 +192,7 @@ async def test_fix_submit_sends_pipeline_start(ack_app, mock_sqs_client):
 async def test_issue_accept_sends_accept_to_sqs(ack_app, mock_sqs_client):
     await ack_app.async_dispatch(_req(_action_body("issue_accept")))
 
-    payload = json.loads(mock_sqs_client.send_message.call_args.kwargs["MessageBody"])
+    payload = json.loads(json.dumps(mock_sqs_client.send.call_args.args[0]))
     assert payload["type"] == "accept"
     assert payload["message_ts"] == "msg_ts_123"
     assert payload["channel_id"] == "C1"
@@ -236,7 +236,7 @@ async def test_reject_submit_sends_reject_to_sqs(ack_app, mock_sqs_client):
     body = _view_body("reject_submit", values, private_metadata=meta)
     await ack_app.async_dispatch(_req(body))
 
-    payload = json.loads(mock_sqs_client.send_message.call_args.kwargs["MessageBody"])
+    payload = json.loads(json.dumps(mock_sqs_client.send.call_args.args[0]))
     assert payload["type"] == "reject"
     assert payload["message_ts"] == "ts1"
     assert payload["additional_requirements"] == "성능 개선 추가"
@@ -248,7 +248,7 @@ async def test_reject_submit_none_when_no_additional(ack_app, mock_sqs_client):
     body = _view_body("reject_submit", values, private_metadata=meta)
     await ack_app.async_dispatch(_req(body))
 
-    payload = json.loads(mock_sqs_client.send_message.call_args.kwargs["MessageBody"])
+    payload = json.loads(json.dumps(mock_sqs_client.send.call_args.args[0]))
     assert payload["additional_requirements"] is None
 
 
@@ -261,7 +261,7 @@ async def test_drop_submit_sends_drop_restart_to_sqs(ack_app, mock_sqs_client):
     body = _view_body("drop_submit", values, private_metadata=meta)
     await ack_app.async_dispatch(_req(body))
 
-    payload = json.loads(mock_sqs_client.send_message.call_args.kwargs["MessageBody"])
+    payload = json.loads(json.dumps(mock_sqs_client.send.call_args.args[0]))
     assert payload["type"] == "drop_restart"
     assert payload["message_ts"] == "ts1"
     assert set(payload["dropped_ids"]) == {"new_features::0", "domain_rules::0"}
@@ -273,5 +273,5 @@ async def test_drop_submit_empty_selection(ack_app, mock_sqs_client):
     body = _view_body("drop_submit", values, private_metadata=meta)
     await ack_app.async_dispatch(_req(body))
 
-    payload = json.loads(mock_sqs_client.send_message.call_args.kwargs["MessageBody"])
+    payload = json.loads(json.dumps(mock_sqs_client.send.call_args.args[0]))
     assert payload["dropped_ids"] == []

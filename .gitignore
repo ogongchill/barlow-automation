@@ -11,3 +11,7 @@ dist/
 build/
 
 *.env
+
+scripts/outputs/*
+scripts/.local_state.json
+.pytest_cache/

@@ -30,7 +30,7 @@ class PendingRecord:
     user_id: str
     channel_id: str
     user_message: str            # Modal to_prompt() 결과
-    inspector_output: str        # Inspector Agent 출력 (재요청 시 재사용)
+    bc_finder_output: str        # Relevant BC Finder Agent 출력 (재요청 시 재사용)
     typed_output: BaseIssueTemplate
     ttl: int = field(default_factory=lambda: int(time.time()) + PENDING_TTL_SECONDS)
 
@@ -42,7 +42,7 @@ class PendingRecord:
             "user_id": self.user_id,
             "channel_id": self.channel_id,
             "user_message": self.user_message,
-            "inspector_output": self.inspector_output,
+            "bc_finder_output": self.bc_finder_output,
             "typed_output": self.typed_output.model_dump_json(),
             "ttl": self.ttl,
         }
@@ -58,7 +58,7 @@ class PendingRecord:
             user_id=item["user_id"],
             channel_id=item["channel_id"],
             user_message=item["user_message"],
-            inspector_output=item["inspector_output"],
+            bc_finder_output=item["bc_finder_output"],
             typed_output=template_cls.model_validate_json(item["typed_output"]),
             ttl=int(item["ttl"]),
         )

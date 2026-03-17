@@ -25,13 +25,13 @@ def _make_record(feat_template, pk: str = "ts_123") -> PendingRecord:
         user_id="U1",
         channel_id="C1",
         user_message="[feat] bookmark\n\n배경: test\n\n기능:\n- A",
-        inspector_output="inspector context",
+        bc_finder_output="bc finder context",
         typed_output=feat_template,
     )
 
 
 def _record_to_dynamo_item(record: PendingRecord) -> dict:
-    """Build a DynamoDB-style item dict with correct 'inspector_output' key.
+    """Build a DynamoDB-style item dict with correct 'bc_finder_output' key.
 
     PendingRecord.to_item() has a known bug where the key is whitespace;
     this helper builds the correct item for test assertions.
@@ -42,7 +42,7 @@ def _record_to_dynamo_item(record: PendingRecord) -> dict:
         "user_id": record.user_id,
         "channel_id": record.channel_id,
         "user_message": record.user_message,
-        "inspector_output": record.inspector_output,
+        "bc_finder_output": record.bc_finder_output,
         "typed_output": record.typed_output.model_dump_json(),
         "ttl": record.ttl,
     }

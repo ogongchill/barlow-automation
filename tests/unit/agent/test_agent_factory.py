@@ -18,20 +18,13 @@ def _patch_deps():
         yield mock_agent_cls, mock_mcp
 
 
-class TestInspector:
+class TestRelevantBcFinder:
 
-    def test_inspector_uses_tree_mcp(self, _patch_deps) -> None:
+    def test_bc_finder_uses_tree_mcp(self, _patch_deps) -> None:
         mock_agent_cls, mock_mcp = _patch_deps
         from src.agent.agent_factory import AgentFactory
 
-        agent = AgentFactory.inspector()
-        mock_mcp.readProjectTree.assert_called()
-
-    def test_read_planner_uses_tree_mcp(self, _patch_deps) -> None:
-        mock_agent_cls, mock_mcp = _patch_deps
-        from src.agent.agent_factory import AgentFactory
-
-        agent = AgentFactory.read_planner()
+        agent = AgentFactory.relevant_bc_finder()
         mock_mcp.readProjectTree.assert_called()
 
 

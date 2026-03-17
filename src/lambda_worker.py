@@ -32,8 +32,8 @@ async def _handle_pipeline_start(event: dict, client: AsyncWebClient) -> None:
     channel_id = event["channel_id"]
     user_message = event["user_message"]
 
-    inspector_output, plan_usage = await run_read_planner(user_message)
-    template, gen_usage = await run_issue_generator(subcommand, inspector_output)
+    bc_finder_output, plan_usage = await run_read_planner(user_message)
+    template, gen_usage = await run_issue_generator(subcommand, bc_finder_output)
     plan_usage.add(input_tokens=gen_usage.input_tokens, output_tokens=gen_usage.output_tokens)
 
     blocks = build_issue_blocks(user_id, template, plan_usage.format())
@@ -45,7 +45,7 @@ async def _handle_pipeline_start(event: dict, client: AsyncWebClient) -> None:
         user_id=user_id,
         channel_id=channel_id,
         user_message=user_message,
-        inspector_output=inspector_output,
+        bc_finder_output=bc_finder_output,
         typed_output=template,
     ))
 
@@ -91,7 +91,7 @@ async def _handle_reject(event: dict, client: AsyncWebClient) -> None:
             user_id=user_id,
             channel_id=channel_id,
             user_message=record.user_message,
-            inspector_output=record.inspector_output,
+            bc_finder_output=record.bc_finder_output,
             typed_output=template,
         ),
         old_ts=message_ts,
@@ -117,7 +117,7 @@ async def _handle_drop_restart(event: dict, client: AsyncWebClient) -> None:
             user_id=user_id,
             channel_id=channel_id,
             user_message=record.user_message,
-            inspector_output=record.inspector_output,
+            bc_finder_output=record.bc_finder_output,
             typed_output=filtered,
         )
     )
@@ -131,7 +131,7 @@ async def _handle_drop_restart(event: dict, client: AsyncWebClient) -> None:
             user_id=user_id,
             channel_id=channel_id,
             user_message=record.user_message,
-            inspector_output=record.inspector_output,
+            bc_finder_output=record.bc_finder_output,
             typed_output=template,
         ),
         old_ts=message_ts,
