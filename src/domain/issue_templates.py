@@ -24,9 +24,10 @@ class BaseIssueTemplate(BaseModel):
 
 
 class FeatTemplate(BaseIssueTemplate):
+    goal: str
     new_features: list[str]
     domain_rules: list[str]
-    domain_constraints: list[str]
+    additional_info: str
 
     @property
     def label(self) -> Label:

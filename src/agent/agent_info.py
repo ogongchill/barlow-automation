@@ -20,84 +20,105 @@ class AvailableAgents(enum.Enum):
 
     # repo 읽기 전략을 수집하는 Read-planner
 
-    class _ReadPlanFormat(BaseModel):
-
-        class _SearchTarget(BaseModel):
-            id: str
-            description: str
-            found_dir: list[str]
-
-        request_summary: str = Field(..., description="A concise restatement of the user's request")
-        searchTarget: list[_SearchTarget] = Field(..., description="suspected target groups related to user request")
+    class Candidates(BaseModel):
+        class Candidate(BaseModel):
+            bounded_context: str = Field(..., description="Candidate domain/component/feature name")
+            confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score")
+            reason: str
+        items: list[Candidate]
+        usecases: list[str]
+        features: list[str]
+        domain_rules: list[str]
+        goal: str
 
     RELEVANT_BC_FINDER = AgentInfo(
         name="relevant_bc_finder",
         sys_prompt="""
-        You are the Relevant BC Finder to discover source-code-related directories.
-        Target Repository: https://github.com/ogongchill/barlow
+        You generate repository candidates from a user request.
 
-        - Do not guess implementation details beyond what the repository structure reasonably supports.
-        - answer only in ENG.
+        Target repository:
+        https://github.com/ogongchill/barlow/
 
-        Tool usage rules:
-        - Start with shallow inspection first
-        - Use `path_filter` whenever possible
-        - Do not inspect the full repository recursively unless explicitly requested
-        - Stop as soon as there is enough structural evidence to form a useful plan
-        - ignore configuration files or build-related files.(*.yml, *.gradle, etc)
+        Reference:
+        docs/DOMAIN_ENCYCLOPEDIA.md
 
-        Strict evidence rules:
-        - You may include ONLY explicitly observed in tool output during this session
-        - Never invent, infer, or extend a path that was not directly returned by the tool
-        - If a relevant path was not observed, do not mention it
-        - `found_dir` must contain only observed directory paths
-        - If no relevant directory was observed for a target, use an empty list
+        Hint:
+        BC stands for bounded context
 
-        Planning guidelines:
-        - Focus on investigation intent, likely search targets, and structural priorities
-        - Group related investigation needs into a small number of practical target buckets
-        - Express uncertainty as hypotheses, not facts
-        - If the request involves feature design, API changes, refactoring, or ticket generation, include likely current implementation discovery areas and impact areas, but only when supported by observed structure
+        Task:
+        - infer the most likely domain or bounded-context candidates related to the request
+        - return multiple candidates with confidence scores
+        - rank them by confidence descending
+
+        Rules:
+        - prefer candidates grounded in DOMAIN_ENCYCLOPEDIA.md
+        - use only bounded_context implemented on DOMAIN_ENCYCLOPEDIA.md
+        - confidence must be between 0.0 and 1.0
+        - output only contains relevant bc
+        - if given feature does not require any usecase, leave usecase empty.
+
+        Output:
+        Return only the schema-defined structured result.
         """,
-        output_format=_ReadPlanFormat,
+        output_format=Candidates,
     )
 
     FEAT_ISSUE_GEN = AgentInfo(
         name="feat_issue_gen",
         sys_prompt="""
-        You are a GitHub issue writer for feature tickets.
-        Target Repository: https://github.com/ogongchill/barlow
+        You are a system architect agent that drafts Korean issue templates for new features.
 
-        Input:
-        - request_summary: concise restatement of the user’s feature request
-        - searchTarget[]:
-        - id: target identifier
-        - description: what the target area represents
-        - found_dir: repository directories relevant to the target
+        Target repository:
+        https://github.com/ogongchill/barlow/
+
+        Reference:
+        docs/DOMAIN_ENCYCLOPEDIA.md
+
+        Tool usage:
+        - Read only relevant sections from the reference.
+        - Start from the highest-confidence bounded context candidates.
+        - Do not read unrelated sections.
+        - If no existing bounded context fits well, do not force mapping. Propose a new bounded context in `additional_info`.
 
         Task:
-        1. Use request_summary to understand the feature intent.
-        2. Inspect files under each found_dir to identify:
-        - existing patterns, interfaces, and conventions
-        - architectural constraints
-        - what already exists and what is missing
-        3. Write a feature issue using only evidence from the request and observed code.
-
-        Output fields:
-        - issue_title: format "[FEAT] <imperative verb> <object>"
-        - about: 2~4 sentences explaining why the feature is needed and what problem it solves; no implementation steps
-        - new_features: list of user-visible capability statements; no implementation steps
-        - domain_rules: list of business/domain rules grounded in observed code or request
-        - domain_constraints: list of technical/architectural constraints grounded in observed code
+        - understand the true request from `goal`
+        - use `usecases` as primary functional requirements
+        - use candidate `items` only as supporting domain context
+        - produce a clear, actionable, self-contained issue draft
 
         Rules:
-        - Every statement must be traceable to request_summary or inspected files.
-        - Do not invent unsupported requirements.
-        - Be specific and concrete.
-        - Write in English.
-        - Keep each list item to a single clear statement.
-        - Answer in Korean.
-        """,
+        1. Features
+        - derive features from the use case
+        - each feature must represent a functional capability
+        - avoid implementation-level tasks
+        - keep features atomic enough to be reusable
+        - avoid vague high-level epics
+        - merge duplicates or near-duplicates
+        - write features as short normalized phrases
+
+        2. Domain rules
+        - must be bounded-context level
+        - must be domain constraints
+        - must be centered on core data consistency
+        - must be lifecycle-oriented, including creation, transition, activation, expiration, or termination when relevant
+        - prefer invariants and state rules over implementation details
+
+        3. Drafting
+        - preserve user intent
+        - do not invent unsupported requirements
+        - prefer precise developer-friendly wording
+
+        3. Bounded context handling
+        - prioritize investigation based on the highest-confidence candidate items
+        - if an existing bounded context clearly fits, align the issue to that context
+        - if no existing bounded context fits with sufficient confidence, define a new bounded context proposal
+        - when proposing a new bounded context, include it in `additional_info`
+        - do not force the request into an unrelated existing bounded context
+
+        Output:
+        - Korean only
+        - return only the issue template
+        - no markdown code fences""",
         output_format=FeatTemplate
     )
 

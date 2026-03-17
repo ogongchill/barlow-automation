@@ -137,7 +137,6 @@ class GithubToolSet(Enum):
     ]
 
 
-
 def _build_server(toolset: GithubToolSet) -> MCPServerStreamableHttp:
     return MCPServerStreamableHttp(
         params=MCPServerStreamableHttpParams(
@@ -146,7 +145,7 @@ def _build_server(toolset: GithubToolSet) -> MCPServerStreamableHttp:
                 "Authorization": config.github_token,
                 "X-MCP-Tools": ", ".join(toolset.value),
                 "X-MCP-Readonly": "true",
-            },
+               },
         ),
         name="github",
         cache_tools_list=True,

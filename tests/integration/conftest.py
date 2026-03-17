@@ -13,9 +13,10 @@ def _default_feat_template() -> FeatTemplate:
     return FeatTemplate(
         issue_title="[FEAT] Test feature",
         about="Test about.",
+        goal="테스트 목표.",
         new_features=["feature A", "feature B"],
         domain_rules=["rule 1"],
-        domain_constraints=["constraint 1"],
+        additional_info="",
     )
 
 
@@ -69,7 +70,7 @@ def mock_idempotency_repo():
 @pytest.fixture()
 def mock_services():
     with (
-        patch("src.lambda_worker.run_read_planner", new_callable=AsyncMock) as mock_planner,
+        patch("src.lambda_worker.run_relevant_bc_finder", new_callable=AsyncMock) as mock_planner,
         patch("src.lambda_worker.run_issue_generator", new_callable=AsyncMock) as mock_issue_gen,
         patch("src.lambda_worker.run_re_issue_generator", new_callable=AsyncMock) as mock_reissue_gen,
         patch("src.lambda_worker.run_issue_creator", new_callable=AsyncMock, create=True) as mock_issue_creator,
@@ -79,7 +80,7 @@ def mock_services():
         mock_reissue_gen.return_value = (_default_feat_template(), AgentUsage(input_tokens=40, output_tokens=20))
         mock_issue_creator.return_value = "https://github.com/ogongchill/barlow/issues/42"
         yield {
-            "run_read_planner": mock_planner,
+            "run_relevant_bc_finder": mock_planner,
             "run_issue_generator": mock_issue_gen,
             "run_re_issue_generator": mock_reissue_gen,
             "run_issue_creator": mock_issue_creator,

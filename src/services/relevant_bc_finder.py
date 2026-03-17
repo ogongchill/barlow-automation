@@ -8,7 +8,7 @@ from src.agent.usage import AgentUsage
 logger = logging.getLogger(__name__)
 
 
-async def run_read_planner(user_message: str) -> tuple[str, AgentUsage]:
+async def run_relevant_bc_finder(user_message: str) -> tuple[str, AgentUsage]:
     """user_message를 받아 bc_finder 출력 문자열과 usage를 반환한다.
 
     Returns:

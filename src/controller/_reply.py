@@ -25,13 +25,15 @@ def slack_format(template: BaseIssueTemplate) -> str:
 
 @slack_format.register
 def _(template: FeatTemplate) -> str:
-    return "\n\n".join([
+    parts = [
         f"*{template.issue_title}*",
         template.about,
+        f"*목표*\n{template.goal}" if template.goal else None,
         f"*신규 기능*\n{_bullets(template.new_features)}",
         f"*도메인 규칙*\n{_bullets(template.domain_rules)}",
-        f"*기술 제약*\n{_bullets(template.domain_constraints)}",
-    ])
+        f"*추가정보*\n{template.additional_info}" if template.additional_info else None,
+    ]
+    return "\n\n".join(p for p in parts if p is not None)
 
 
 @slack_format.register

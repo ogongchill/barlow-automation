@@ -47,7 +47,7 @@ async def test_pipeline_start_calls_read_planner(worker_ctx):
         user_id="U1", channel_id="C1",
         user_message="[feat] 즐겨찾기", dedup_id="d1",
     ))
-    worker_ctx["services"]["run_read_planner"].assert_awaited_once_with("[feat] 즐겨찾기")
+    worker_ctx["services"]["run_relevant_bc_finder"].assert_awaited_once_with("[feat] 즐겨찾기")
 
 
 async def test_pipeline_start_calls_issue_gen_with_inspector_output(worker_ctx):
@@ -248,20 +248,20 @@ async def test_duplicate_dedup_id_skips_all_services(worker_ctx):
         user_id="U1", channel_id="C1",
         user_message="msg", dedup_id="dup_id",
     ))
-    worker_ctx["services"]["run_read_planner"].assert_not_awaited()
+    worker_ctx["services"]["run_relevant_bc_finder"].assert_not_awaited()
     worker_ctx["services"]["run_issue_generator"].assert_not_awaited()
     worker_ctx["client"].chat_postMessage.assert_not_awaited()
 
 
 async def test_unknown_event_type_is_ignored(worker_ctx):
     await _process(_event(type="unknown_type", dedup_id="d99"))
-    worker_ctx["services"]["run_read_planner"].assert_not_awaited()
+    worker_ctx["services"]["run_relevant_bc_finder"].assert_not_awaited()
 
 
 # ── error handling ───────────────────────────────────────────────────────────
 
 async def test_pipeline_start_posts_error_message_when_agent_fails(worker_ctx):
-    worker_ctx["services"]["run_read_planner"].side_effect = Exception("API timeout")
+    worker_ctx["services"]["run_relevant_bc_finder"].side_effect = Exception("API timeout")
     await _process(_event(
         type="pipeline_start", subcommand="feat",
         user_id="U1", channel_id="C1",

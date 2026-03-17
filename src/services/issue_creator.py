@@ -24,12 +24,14 @@ def _bullet(items: list[str]) -> str:
 
 def _format_body(template: BaseIssueTemplate) -> str:
     if isinstance(template, FeatTemplate):
-        return (
-            f"## 개요\n{template.about}\n\n"
-            f"## 새로운 기능\n{_bullet(template.new_features)}\n\n"
-            f"## 도메인 규칙\n{_bullet(template.domain_rules)}\n\n"
-            f"## 도메인 제약\n{_bullet(template.domain_constraints)}"
-        )
+        parts = [
+            f"## 개요\n{template.about}",
+            f"## 목표\n{template.goal}" if template.goal else None,
+            f"## 새로운 기능\n{_bullet(template.new_features)}",
+            f"## 도메인 규칙\n{_bullet(template.domain_rules)}",
+            f"## 추가사항\n{template.additional_info}" if template.additional_info else None,
+        ]
+        return "\n\n".join(p for p in parts if p is not None)
     if isinstance(template, RefactorTemplate):
         goals_md = ""
         for goal in template.goals:

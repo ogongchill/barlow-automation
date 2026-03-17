@@ -20,37 +20,37 @@ def mock_bc_finder_agent():
 
 class TestRunReadPlanner:
 
-    @patch("src.services.read_planner.AgentFactory")
+    @patch("src.services.relevant_bc_finder.AgentFactory")
     async def test_calls_bc_finder_with_user_message(
         self, mock_factory, mock_bc_finder_agent
     ) -> None:
         mock_factory.relevant_bc_finder.return_value = mock_bc_finder_agent
 
-        from src.services.read_planner import run_read_planner
+        from src.services.relevant_bc_finder import run_relevant_bc_finder
 
-        await run_read_planner("user request")
+        await run_relevant_bc_finder("user request")
 
         mock_bc_finder_agent.run.assert_awaited_once_with("user request")
 
-    @patch("src.services.read_planner.AgentFactory")
+    @patch("src.services.relevant_bc_finder.AgentFactory")
     async def test_returns_bc_finder_output(
         self, mock_factory, mock_bc_finder_agent
     ) -> None:
         mock_factory.relevant_bc_finder.return_value = mock_bc_finder_agent
 
-        from src.services.read_planner import run_read_planner
+        from src.services.relevant_bc_finder import run_relevant_bc_finder
 
-        output, usage = await run_read_planner("user request")
+        output, usage = await run_relevant_bc_finder("user request")
         assert output == "bc finder output text"
 
-    @patch("src.services.read_planner.AgentFactory")
+    @patch("src.services.relevant_bc_finder.AgentFactory")
     async def test_usage_accumulation(
         self, mock_factory, mock_bc_finder_agent
     ) -> None:
         mock_factory.relevant_bc_finder.return_value = mock_bc_finder_agent
 
-        from src.services.read_planner import run_read_planner
+        from src.services.relevant_bc_finder import run_relevant_bc_finder
 
-        output, usage = await run_read_planner("user request")
+        output, usage = await run_relevant_bc_finder("user request")
         assert usage.input_tokens == 200
         assert usage.output_tokens == 80

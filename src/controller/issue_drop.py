@@ -45,7 +45,6 @@ def _(template: FeatTemplate) -> list[DroppableItem]:
     return [
         *_to_droppable(template.new_features, "new_features", "신규 기능"),
         *_to_droppable(template.domain_rules, "domain_rules", "도메인 규칙"),
-        *_to_droppable(template.domain_constraints, "domain_constraints", "기술 제약"),
     ]
 
 
@@ -89,7 +88,6 @@ def _(template: FeatTemplate, dropped_ids: set[str]) -> FeatTemplate:
     return template.model_copy(update={
         "new_features": _drop(template.new_features, "new_features", dropped_ids),
         "domain_rules": _drop(template.domain_rules, "domain_rules", dropped_ids),
-        "domain_constraints": _drop(template.domain_constraints, "domain_constraints", dropped_ids),
     })
 
 

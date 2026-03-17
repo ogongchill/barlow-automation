@@ -34,13 +34,14 @@ def feat_template() -> FeatTemplate:
     return FeatTemplate(
         issue_title="[FEAT] Add bookmark feature",
         about="Users need a way to bookmark items for quick access.",
+        goal="북마크 기능을 통해 사용자가 자주 접근하는 항목을 빠르게 찾을 수 있도록 한다.",
         new_features=[
             "User can bookmark any item",
             "User can view bookmarked items list",
             "User can remove a bookmark",
         ],
         domain_rules=["Only authenticated users can bookmark"],
-        domain_constraints=["Must use existing auth middleware"],
+        additional_info="",
     )
 
 

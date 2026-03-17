@@ -14,7 +14,7 @@ from src.logging_config import setup_logging
 from src.services.issue_generator import run_issue_generator
 from src.services.issue_creator import run_issue_creator
 from src.services.re_issue_generator import run_re_issue_generator
-from src.services.read_planner import run_read_planner
+from src.services.relevant_bc_finder import run_relevant_bc_finder
 from src.storage.idempotency_dynamo_repository import DynamoIdempotencyRepository
 from src.storage.request_dynamo_repository import DynamoPendingRepository
 from src.agent.mcp import GitHubMCPFactory
@@ -32,7 +32,7 @@ async def _handle_pipeline_start(event: dict, client: AsyncWebClient) -> None:
     channel_id = event["channel_id"]
     user_message = event["user_message"]
 
-    bc_finder_output, plan_usage = await run_read_planner(user_message)
+    bc_finder_output, plan_usage = await run_relevant_bc_finder(user_message)
     template, gen_usage = await run_issue_generator(subcommand, bc_finder_output)
     plan_usage.add(input_tokens=gen_usage.input_tokens, output_tokens=gen_usage.output_tokens)
 

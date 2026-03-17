@@ -14,14 +14,14 @@ class TestDroppableItemsFeat:
     def test_section_coverage(self, feat_template: FeatTemplate) -> None:
         items = droppable_items(feat_template)
         sections = {item.section for item in items}
-        assert sections == {"신규 기능", "도메인 규칙", "기술 제약"}
+        assert sections == {"신규 기능", "도메인 규칙"}
 
     def test_id_format(self, feat_template: FeatTemplate) -> None:
         items = droppable_items(feat_template)
         for item in items:
             assert "::" in item.id
             field, idx = item.id.split("::")
-            assert field in ("new_features", "domain_rules", "domain_constraints")
+            assert field in ("new_features", "domain_rules")
             assert idx.isdigit()
 
     def test_total_count(self, feat_template: FeatTemplate) -> None:
@@ -29,7 +29,6 @@ class TestDroppableItemsFeat:
         expected = (
             len(feat_template.new_features)
             + len(feat_template.domain_rules)
-            + len(feat_template.domain_constraints)
         )
         assert len(items) == expected
 
@@ -72,7 +71,6 @@ class TestDropItemsFeat:
         result = drop_items(feat_template, set())
         assert result.new_features == feat_template.new_features
         assert result.domain_rules == feat_template.domain_rules
-        assert result.domain_constraints == feat_template.domain_constraints
 
     def test_removes_all_new_features(self, feat_template: FeatTemplate) -> None:
         ids = {f"new_features::{i}" for i in range(len(feat_template.new_features))}
