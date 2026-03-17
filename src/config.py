@@ -18,8 +18,8 @@ class Config:
     github_token: str
     openai_api_key: str
     sqs_queue_url: str
-    # target_repo_owner: str
-    # target_repo_name: str
+    github_owner: str
+    github_repo: str
 
 
 def _require(key: str) -> str:
@@ -36,15 +36,14 @@ def _detect_os_type() -> OsType:
     return OsType.WINDOWS if sys.platform == "win32" else OsType.LINUX
 
 
-# def _parse_target_repo() -> tuple[str, str]:
-#     raw = _require("TARGET_REPO")
-#     parts = raw.split("/", 1)
-#     if len(parts) != 2 or not all(parts):
-#         raise EnvironmentError(f"TARGET_REPO must be in 'owner/repo' format, got: {raw!r}")
-#     return parts[0], parts[1]
+def _parse_github_repo() -> tuple[str, str]:
+    raw = _require("TARGET_REPO")
+    # "https://github.com/owner/repo" 또는 "owner/repo" 형식 지원
+    parts = raw.rstrip("/").split("/")
+    return parts[-2], parts[-1]
 
 
-# _repo_owner, _repo_name = _parse_target_repo()
+_github_owner, _github_repo = _parse_github_repo()
 
 config = Config(
     slack_bot_token=_require("SLACK_BOT_TOKEN"),
@@ -53,6 +52,6 @@ config = Config(
     github_token=_require("GITHUB_TOKEN"),
     openai_api_key=_require("OPENAI_API_KEY"),
     sqs_queue_url=os.getenv("SQS_QUEUE_URL", ""),
-    # target_repo_owner=_repo_owner,
-    # target_repo_name=_repo_name,
+    github_owner=_github_owner,
+    github_repo=_github_repo,
 )
