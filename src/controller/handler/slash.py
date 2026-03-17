@@ -1,31 +1,44 @@
-"""슬래시 커맨드 / Modal 제출 / Block Action 핸들러 — ack 후 SQS 전달."""
+"""슬래시 커맨드 / Modal 제출 / Block Action 핸들러 — ack 후 큐 전달."""
 
 import json
 import logging
 
-import boto3
 from slack_bolt.async_app import AsyncApp
 
-from src.config import config
 from src.controller._reply import build_reject_modal, build_drop_modal
 from src.controller.issue_drop import droppable_items
 from src.controller.modal_templates.feat_modal_input import FeatModalInput
-from src.controller.modal_templates.refactor_modal_input import RefactorModalInput
 from src.controller.modal_templates.fix_modal_input import FixModalInput
-from src.storage.request_dynamo_repository import DynamoPendingRepository
+from src.controller.modal_templates.refactor_modal_input import (
+    RefactorModalInput,
+)
+from src.domain.pending import IPendingRepository
+from src.domain.queue import IQueueSender
 
 logger = logging.getLogger(__name__)
 
-_sqs = boto3.client("sqs")
-_pending_repo = DynamoPendingRepository()
+_pending_repo: IPendingRepository | None = None
+_queue: IQueueSender | None = None
+
+
+def configure(pending_repo: IPendingRepository, queue: IQueueSender) -> None:
+    """진입점(Lambda / 로컬 서버)에서 의존성을 주입한다."""
+    global _pending_repo, _queue
+    _pending_repo = pending_repo
+    _queue = queue
 
 
 def _put_sqs(message: dict) -> None:
-    _sqs.send_message(QueueUrl=config.sqs_queue_url, MessageBody=json.dumps(message))
-    logger.debug("sqs | sent type=%s", message.get("type"))
+    assert _queue is not None, "slash.configure() 가 호출되지 않았습니다"
+    _queue.send(message)
 
 
-def _modal_view(callback_id: str, title: str, blocks: list[dict], private_metadata: str = "") -> dict:
+def _modal_view(
+    callback_id: str,
+    title: str,
+    blocks: list[dict],
+    private_metadata: str = "",
+) -> dict:
     return {
         "type": "modal",
         "callback_id": callback_id,
@@ -47,9 +60,12 @@ def register(app: AsyncApp) -> None:
         await client.views_open(
             trigger_id=command["trigger_id"],
             view=_modal_view(
-                FeatModalInput.CALLBACK_ID, "기능 요청",
+                FeatModalInput.CALLBACK_ID,
+                "기능 요청",
                 FeatModalInput.modal_blocks(),
-                private_metadata=json.dumps({"channel_id": command["channel_id"]}),
+                private_metadata=json.dumps(
+                    {"channel_id": command["channel_id"]}
+                ),
             ),
         )
 
@@ -59,9 +75,12 @@ def register(app: AsyncApp) -> None:
         await client.views_open(
             trigger_id=command["trigger_id"],
             view=_modal_view(
-                RefactorModalInput.CALLBACK_ID, "리팩토링 요청",
+                RefactorModalInput.CALLBACK_ID,
+                "리팩토링 요청",
                 RefactorModalInput.modal_blocks(),
-                private_metadata=json.dumps({"channel_id": command["channel_id"]}),
+                private_metadata=json.dumps(
+                    {"channel_id": command["channel_id"]}
+                ),
             ),
         )
 
@@ -71,13 +90,16 @@ def register(app: AsyncApp) -> None:
         await client.views_open(
             trigger_id=command["trigger_id"],
             view=_modal_view(
-                FixModalInput.CALLBACK_ID, "버그 수정 요청",
+                FixModalInput.CALLBACK_ID,
+                "버그 수정 요청",
                 FixModalInput.modal_blocks(),
-                private_metadata=json.dumps({"channel_id": command["channel_id"]}),
+                private_metadata=json.dumps(
+                    {"channel_id": command["channel_id"]}
+                ),
             ),
         )
 
-    # ── Modal 제출 → SQS pipeline_start ─────────────────────────────────────
+    # ── Modal 제출 → 큐 pipeline_start ──────────────────────────────────────
 
     @app.view(FeatModalInput.CALLBACK_ID)
     async def handle_feat_submit(ack, body, view):
@@ -88,7 +110,9 @@ def register(app: AsyncApp) -> None:
             "subcommand": "feat",
             "user_id": body["user"]["id"],
             "channel_id": meta.get("channel_id", ""),
-            "user_message": FeatModalInput.from_view(view["state"]["values"]).to_prompt(),
+            "user_message": FeatModalInput.from_view(
+                view["state"]["values"]
+            ).to_prompt(),
             "dedup_id": body["view"]["id"],
         })
 
@@ -101,7 +125,9 @@ def register(app: AsyncApp) -> None:
             "subcommand": "refactor",
             "user_id": body["user"]["id"],
             "channel_id": meta.get("channel_id", ""),
-            "user_message": RefactorModalInput.from_view(view["state"]["values"]).to_prompt(),
+            "user_message": RefactorModalInput.from_view(
+                view["state"]["values"]
+            ).to_prompt(),
             "dedup_id": body["view"]["id"],
         })
 
@@ -114,7 +140,9 @@ def register(app: AsyncApp) -> None:
             "subcommand": "fix",
             "user_id": body["user"]["id"],
             "channel_id": meta.get("channel_id", ""),
-            "user_message": FixModalInput.from_view(view["state"]["values"]).to_prompt(),
+            "user_message": FixModalInput.from_view(
+                view["state"]["values"]
+            ).to_prompt(),
             "dedup_id": body["view"]["id"],
         })
 
@@ -165,6 +193,7 @@ def register(app: AsyncApp) -> None:
     @app.action("issue_drop")
     async def handle_drop(ack, client, body):
         await ack()
+        assert _pending_repo is not None, "slash.configure() 가 호출되지 않았습니다"
         message_ts = body["message"]["ts"]
         record = await _pending_repo.get(message_ts)
         if not record:

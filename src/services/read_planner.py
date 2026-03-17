@@ -18,7 +18,7 @@ async def run_read_planner(user_message: str) -> tuple[str, AgentUsage]:
     """
     usage = AgentUsage()
 
-    planner_result = await AgentFactory.read_planner().run(user_message)
+    planner_result = await AgentFactory.inspector().run(user_message)
     usage.add(
         input_tokens=planner_result.usage.input_tokens,
         output_tokens=planner_result.usage.output_tokens,

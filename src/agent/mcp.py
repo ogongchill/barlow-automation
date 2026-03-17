@@ -1,6 +1,9 @@
+import logging
 from enum import Enum
 from src.config import config
 from agents.mcp import MCPServerStreamableHttp, MCPServerStreamableHttpParams
+
+logger = logging.getLogger(__name__)
 
 
 class GithubToolSet(Enum):
@@ -171,9 +174,11 @@ class GitHubMCPFactory:
     @classmethod
     async def disconnect(cls) -> None:
         """앱 종료 시 모든 MCP 서버를 해제한다."""
-        await cls._read_tree.cleanup()
-        await cls._read_files.cleanup()
-        await cls._write_issue.cleanup()
+        for server in (cls._read_tree, cls._read_files, cls._write_issue):
+            try:
+                await server.cleanup()
+            except BaseException as e:
+                logger.debug("mcp cleanup suppressed: %s", e)
 
     @classmethod
     def readProjectTree(cls) -> MCPServerStreamableHttp:

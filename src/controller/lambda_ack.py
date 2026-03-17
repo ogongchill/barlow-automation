@@ -8,11 +8,19 @@ from slack_bolt.async_app import AsyncApp
 from slack_bolt.request.async_request import AsyncBoltRequest
 
 from src.controller.app import create_app
+from src.controller.handler import slash
 from src.controller.router import register
 from src.logging_config import setup_logging
+from src.storage.request_dynamo_repository import DynamoPendingRepository
+from src.storage.sqs_queue_sender import SqsQueueSender
 
 setup_logging()
 logger = logging.getLogger(__name__)
+
+slash.configure(
+    pending_repo=DynamoPendingRepository(),
+    queue=SqsQueueSender(),
+)
 
 _app: AsyncApp = create_app()
 register(_app)

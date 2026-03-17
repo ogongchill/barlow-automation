@@ -25,12 +25,11 @@ class AgentFactory:
         )
 
     @staticmethod
-    def read_planner() -> OpenAIAgent:
-        return AgentFactory._build(AvailableAgents.READ_PLANNER, GitHubMCPFactory.readProjectTree())
-
-    @staticmethod
     def inspector() -> OpenAIAgent:
-        return AgentFactory._build(AvailableAgents.READ_TARGET_INSPECTOR, GitHubMCPFactory.readProjectTree())
+        return AgentFactory._build(
+            AvailableAgents.READ_TARGET_INSPECTOR,
+            GitHubMCPFactory.readProjectTree()
+        )
 
     @staticmethod
     def issue_gen(subcommand: str) -> OpenAIAgent:

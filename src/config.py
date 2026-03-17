@@ -13,12 +13,13 @@ class OsType(str, Enum):
 class Config:
     slack_bot_token: str
     slack_signing_secret: str
-    anthropic_api_key: str
+    slack_app_token: str        # Socket Mode용 (xapp-...)
+    # anthropic_api_key: str
     github_token: str
     openai_api_key: str
     sqs_queue_url: str
-    target_repo_owner: str
-    target_repo_name: str
+    # target_repo_owner: str
+    # target_repo_name: str
 
 
 def _require(key: str) -> str:
@@ -35,23 +36,23 @@ def _detect_os_type() -> OsType:
     return OsType.WINDOWS if sys.platform == "win32" else OsType.LINUX
 
 
-def _parse_target_repo() -> tuple[str, str]:
-    raw = _require("TARGET_REPO")
-    parts = raw.split("/", 1)
-    if len(parts) != 2 or not all(parts):
-        raise EnvironmentError(f"TARGET_REPO must be in 'owner/repo' format, got: {raw!r}")
-    return parts[0], parts[1]
+# def _parse_target_repo() -> tuple[str, str]:
+#     raw = _require("TARGET_REPO")
+#     parts = raw.split("/", 1)
+#     if len(parts) != 2 or not all(parts):
+#         raise EnvironmentError(f"TARGET_REPO must be in 'owner/repo' format, got: {raw!r}")
+#     return parts[0], parts[1]
 
 
-_repo_owner, _repo_name = _parse_target_repo()
+# _repo_owner, _repo_name = _parse_target_repo()
 
 config = Config(
     slack_bot_token=_require("SLACK_BOT_TOKEN"),
     slack_signing_secret=_require("SLACK_SIGNING_SECRET"),
-    anthropic_api_key=_require("ANTHROPIC_API_KEY"),
+    slack_app_token=os.getenv("SLACK_APP_TOKEN", ""),
     github_token=_require("GITHUB_TOKEN"),
     openai_api_key=_require("OPENAI_API_KEY"),
-    sqs_queue_url=_require("SQS_QUEUE_URL"),
-    target_repo_owner=_repo_owner,
-    target_repo_name=_repo_name,
+    sqs_queue_url=os.getenv("SQS_QUEUE_URL", ""),
+    # target_repo_owner=_repo_owner,
+    # target_repo_name=_repo_name,
 )

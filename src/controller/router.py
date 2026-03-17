@@ -2,10 +2,8 @@
 
 from slack_bolt.async_app import AsyncApp
 
-from src.controller.handler import slash, mention, message
+from src.controller.handler import slash
 
 
 def register(app: AsyncApp) -> None:
     slash.register(app)
-    mention.register(app)
-    message.register(app)

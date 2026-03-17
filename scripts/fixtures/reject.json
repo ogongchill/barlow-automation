@@ -1,0 +1,8 @@
+{
+  "type": "reject",
+  "message_ts": "REPLACE_WITH_MESSAGE_TS",
+  "user_id": "U_LOCAL",
+  "channel_id": "C_LOCAL",
+  "additional_requirements": "구현 단계를 더 구체적으로 작성해줘. 특히 캐시 만료 정책과 invalidation 전략을 포함시켜.",
+  "dedup_id": "local-reject-001"
+}
