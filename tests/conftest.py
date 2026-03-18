@@ -20,6 +20,8 @@ boto3.resource = unittest.mock.MagicMock(return_value=unittest.mock.MagicMock())
 
 import pytest  # noqa: E402
 
+import time  # noqa: E402
+
 from src.domain.issue_templates import (  # noqa: E402
     FeatTemplate,
     RefactorTemplate,
@@ -27,6 +29,10 @@ from src.domain.issue_templates import (  # noqa: E402
 )
 from src.agent.base import AgentResult  # noqa: E402
 from src.agent.usage import AgentUsage  # noqa: E402
+from src.workflow.models.workflow_state import FeatIssueWorkflowState  # noqa: E402
+from src.workflow.models.workflow_instance import WorkflowInstance  # noqa: E402
+from src.workflow.models.lifecycle import WorkflowStatus  # noqa: E402
+from src.workflow.models.step_result import StepResult  # noqa: E402
 
 
 @pytest.fixture()
@@ -101,3 +107,30 @@ def make_agent_result():
         )
 
     return _factory
+
+
+@pytest.fixture()
+def feat_workflow_state() -> FeatIssueWorkflowState:
+    return FeatIssueWorkflowState(user_message="[feat] 즐겨찾기 기능 추가")
+
+
+@pytest.fixture()
+def feat_workflow_instance(feat_workflow_state: FeatIssueWorkflowState) -> WorkflowInstance:
+    return WorkflowInstance(
+        workflow_id="wf-123",
+        workflow_type="feat_issue",
+        status=WorkflowStatus.RUNNING,
+        current_step="find_relevant_bc",
+        state=feat_workflow_state,
+        pending_action_token=None,
+        slack_channel_id="C1",
+        slack_user_id="U1",
+        slack_message_ts=None,
+        created_at=int(time.time()),
+        ttl=int(time.time()) + 86400,
+    )
+
+
+@pytest.fixture()
+def success_step_result() -> StepResult:
+    return StepResult(status="success", control_signal="continue")
