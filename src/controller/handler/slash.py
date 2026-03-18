@@ -5,26 +5,31 @@ import logging
 
 from slack_bolt.async_app import AsyncApp
 
-from src.controller._reply import build_reject_modal, build_drop_modal
 from src.controller.issue_drop import droppable_items
 from src.controller.modal_templates.feat_modal_input import FeatModalInput
 from src.controller.modal_templates.fix_modal_input import FixModalInput
-from src.controller.modal_templates.refactor_modal_input import (
-    RefactorModalInput,
-)
-from src.domain.pending import IPendingRepository
+from src.controller.modal_templates.refactor_modal_input import RefactorModalInput
+from src.domain.issue.entities import BaseIssueTemplate, FeatTemplate, FixTemplate, RefactorTemplate
 from src.domain.queue import IQueueSender
+from src.infrastructure.storage.dynamodb.workflow_instance_store import IWorkflowInstanceRepository
+from src.workflow.mappers.slack_payload_mapper import build_reject_modal, build_drop_modal
 
 logger = logging.getLogger(__name__)
 
-_pending_repo: IPendingRepository | None = None
+_workflow_repo: IWorkflowInstanceRepository | None = None
 _queue: IQueueSender | None = None
 
+_TEMPLATE_CLS: dict[str, type[BaseIssueTemplate]] = {
+    "feat": FeatTemplate,
+    "refactor": RefactorTemplate,
+    "fix": FixTemplate,
+}
 
-def configure(pending_repo: IPendingRepository, queue: IQueueSender) -> None:
+
+def configure(workflow_repo: IWorkflowInstanceRepository, queue: IQueueSender) -> None:
     """진입점(Lambda / 로컬 서버)에서 의존성을 주입한다."""
-    global _pending_repo, _queue
-    _pending_repo = pending_repo
+    global _workflow_repo, _queue
+    _workflow_repo = workflow_repo
     _queue = queue
 
 
@@ -63,9 +68,7 @@ def register(app: AsyncApp) -> None:
                 FeatModalInput.CALLBACK_ID,
                 "기능 요청",
                 FeatModalInput.modal_blocks(),
-                private_metadata=json.dumps(
-                    {"channel_id": command["channel_id"]}
-                ),
+                private_metadata=json.dumps({"channel_id": command["channel_id"]}),
             ),
         )
 
@@ -78,9 +81,7 @@ def register(app: AsyncApp) -> None:
                 RefactorModalInput.CALLBACK_ID,
                 "리팩토링 요청",
                 RefactorModalInput.modal_blocks(),
-                private_metadata=json.dumps(
-                    {"channel_id": command["channel_id"]}
-                ),
+                private_metadata=json.dumps({"channel_id": command["channel_id"]}),
             ),
         )
 
@@ -93,9 +94,7 @@ def register(app: AsyncApp) -> None:
                 FixModalInput.CALLBACK_ID,
                 "버그 수정 요청",
                 FixModalInput.modal_blocks(),
-                private_metadata=json.dumps(
-                    {"channel_id": command["channel_id"]}
-                ),
+                private_metadata=json.dumps({"channel_id": command["channel_id"]}),
             ),
         )
 
@@ -110,9 +109,7 @@ def register(app: AsyncApp) -> None:
             "subcommand": "feat",
             "user_id": body["user"]["id"],
             "channel_id": meta.get("channel_id", ""),
-            "user_message": FeatModalInput.from_view(
-                view["state"]["values"]
-            ).to_prompt(),
+            "user_message": FeatModalInput.from_view(view["state"]["values"]).to_prompt(),
             "dedup_id": body["view"]["id"],
         })
 
@@ -125,9 +122,7 @@ def register(app: AsyncApp) -> None:
             "subcommand": "refactor",
             "user_id": body["user"]["id"],
             "channel_id": meta.get("channel_id", ""),
-            "user_message": RefactorModalInput.from_view(
-                view["state"]["values"]
-            ).to_prompt(),
+            "user_message": RefactorModalInput.from_view(view["state"]["values"]).to_prompt(),
             "dedup_id": body["view"]["id"],
         })
 
@@ -140,9 +135,7 @@ def register(app: AsyncApp) -> None:
             "subcommand": "fix",
             "user_id": body["user"]["id"],
             "channel_id": meta.get("channel_id", ""),
-            "user_message": FixModalInput.from_view(
-                view["state"]["values"]
-            ).to_prompt(),
+            "user_message": FixModalInput.from_view(view["state"]["values"]).to_prompt(),
             "dedup_id": body["view"]["id"],
         })
 
@@ -151,9 +144,10 @@ def register(app: AsyncApp) -> None:
     @app.action("issue_accept")
     async def handle_accept(ack, body):
         await ack()
+        workflow_id = (body["actions"][0].get("value") or "").strip()
         _put_sqs({
             "type": "accept",
-            "message_ts": body["message"]["ts"],
+            "workflow_id": workflow_id,
             "user_id": body["user"]["id"],
             "channel_id": body["channel"]["id"],
             "dedup_id": body["actions"][0]["action_ts"],
@@ -162,10 +156,11 @@ def register(app: AsyncApp) -> None:
     @app.action("issue_reject")
     async def handle_reject(ack, client, body):
         await ack()
+        workflow_id = (body["actions"][0].get("value") or "").strip()
         await client.views_open(
             trigger_id=body["trigger_id"],
             view=build_reject_modal(
-                message_ts=body["message"]["ts"],
+                workflow_id=workflow_id,
                 channel_id=body["channel"]["id"],
                 user_id=body["user"]["id"],
             ),
@@ -183,7 +178,7 @@ def register(app: AsyncApp) -> None:
         )
         _put_sqs({
             "type": "reject",
-            "message_ts": meta["message_ts"],
+            "workflow_id": meta.get("workflow_id", ""),
             "user_id": meta["user_id"],
             "channel_id": meta["channel_id"],
             "additional_requirements": additional,
@@ -193,19 +188,28 @@ def register(app: AsyncApp) -> None:
     @app.action("issue_drop")
     async def handle_drop(ack, client, body):
         await ack()
-        assert _pending_repo is not None, "slash.configure() 가 호출되지 않았습니다"
-        message_ts = body["message"]["ts"]
-        record = await _pending_repo.get(message_ts)
-        if not record:
-            logger.warning("drop | pending record not found ts=%s", message_ts)
+        assert _workflow_repo is not None, "slash.configure() 가 호출되지 않았습니다"
+        workflow_id = (body["actions"][0].get("value") or "").strip()
+        instance = await _workflow_repo.get(workflow_id)
+        if not instance:
+            logger.warning("drop | workflow not found workflow_id=%s", workflow_id)
             return
+
+        subcommand = instance.workflow_type.replace("_issue", "")
+        template_cls = _TEMPLATE_CLS.get(subcommand, FeatTemplate)
+        try:
+            template = template_cls.model_validate_json(instance.state.issue_draft or "{}")
+        except Exception:
+            logger.warning("drop | failed to parse issue_draft for workflow_id=%s", workflow_id)
+            return
+
         await client.views_open(
             trigger_id=body["trigger_id"],
             view=build_drop_modal(
-                message_ts=message_ts,
+                workflow_id=workflow_id,
                 channel_id=body["channel"]["id"],
                 user_id=body["user"]["id"],
-                items=droppable_items(record.typed_output),
+                items=droppable_items(template),
             ),
         )
 
@@ -221,7 +225,7 @@ def register(app: AsyncApp) -> None:
         )
         _put_sqs({
             "type": "drop_restart",
-            "message_ts": meta["message_ts"],
+            "workflow_id": meta.get("workflow_id", ""),
             "user_id": meta["user_id"],
             "channel_id": meta["channel_id"],
             "dropped_ids": [opt["value"] for opt in selected],

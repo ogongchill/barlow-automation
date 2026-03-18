@@ -1,12 +1,14 @@
 """Integration test fixtures -- mocks for SQS, Slack, repositories, services."""
 
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.agent.usage import AgentUsage
-from src.domain.issue_templates import FeatTemplate
-from src.domain.pending import PendingRecord
+from src.domain.issue.entities import FeatTemplate
+from src.workflow.models.lifecycle import WorkflowStatus
+from src.workflow.models.workflow_instance import WorkflowInstance
+from src.workflow.models.workflow_state import FeatIssueWorkflowState
 
 
 def _default_feat_template() -> FeatTemplate:
@@ -20,15 +22,25 @@ def _default_feat_template() -> FeatTemplate:
     )
 
 
-def _default_pending_record() -> PendingRecord:
-    return PendingRecord(
-        pk="msg_ts_123",
-        subcommand="feat",
-        user_id="U1",
-        channel_id="C1",
+def _default_workflow_instance() -> WorkflowInstance:
+    state = FeatIssueWorkflowState(
         user_message="[feat] Test\n\n배경: test\n\n기능:\n- A",
-        bc_finder_output="bc finder context",
-        typed_output=_default_feat_template(),
+        bc_candidates="bc finder context",
+        issue_draft=_default_feat_template().model_dump_json(),
+    )
+    now = int(time.time())
+    return WorkflowInstance(
+        workflow_id="wf-test-123",
+        workflow_type="feat_issue",
+        status=WorkflowStatus.WAITING,
+        current_step="wait_issue_confirmation",
+        state=state,
+        pending_action_token="token-abc",
+        slack_channel_id="C1",
+        slack_user_id="U1",
+        slack_message_ts="msg_ts_123",
+        created_at=now,
+        ttl=now + 86400,
     )
 
 
@@ -42,7 +54,9 @@ def mock_sqs_client():
 @pytest.fixture()
 def mock_slack_client():
     client = AsyncMock()
-    client.auth_test = AsyncMock(return_value={"ok": True, "bot_id": "B1", "user_id": "U_BOT", "team_id": "T1"})
+    client.auth_test = AsyncMock(
+        return_value={"ok": True, "bot_id": "B1", "user_id": "U_BOT", "team_id": "T1"}
+    )
     client.views_open = AsyncMock(return_value={"ok": True})
     client.chat_postMessage = AsyncMock(return_value={"ok": True, "ts": "new_ts"})
     client.chat_update = AsyncMock(return_value={"ok": True})
@@ -50,12 +64,10 @@ def mock_slack_client():
 
 
 @pytest.fixture()
-def mock_pending_repo():
+def mock_workflow_repo():
     repo = AsyncMock()
     repo.save = AsyncMock()
-    repo.get = AsyncMock(return_value=_default_pending_record())
-    repo.delete = AsyncMock()
-    repo.save_new_and_delete_old = AsyncMock()
+    repo.get = AsyncMock(return_value=_default_workflow_instance())
     return repo
 
 
@@ -65,23 +77,3 @@ def mock_idempotency_repo():
     repo.try_acquire = AsyncMock(return_value=True)
     repo.mark_done = AsyncMock()
     return repo
-
-
-@pytest.fixture()
-def mock_services():
-    with (
-        patch("src.lambda_worker.run_relevant_bc_finder", new_callable=AsyncMock) as mock_planner,
-        patch("src.lambda_worker.run_issue_generator", new_callable=AsyncMock) as mock_issue_gen,
-        patch("src.lambda_worker.run_re_issue_generator", new_callable=AsyncMock) as mock_reissue_gen,
-        patch("src.lambda_worker.run_issue_creator", new_callable=AsyncMock, create=True) as mock_issue_creator,
-    ):
-        mock_planner.return_value = ("bc finder output text", AgentUsage(input_tokens=100, output_tokens=50))
-        mock_issue_gen.return_value = (_default_feat_template(), AgentUsage(input_tokens=50, output_tokens=30))
-        mock_reissue_gen.return_value = (_default_feat_template(), AgentUsage(input_tokens=40, output_tokens=20))
-        mock_issue_creator.return_value = "https://github.com/ogongchill/barlow/issues/42"
-        yield {
-            "run_relevant_bc_finder": mock_planner,
-            "run_issue_generator": mock_issue_gen,
-            "run_re_issue_generator": mock_reissue_gen,
-            "run_issue_creator": mock_issue_creator,
-        }
