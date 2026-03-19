@@ -138,7 +138,6 @@ class GithubToolSet(Enum):
 
     READ_ISSUES = [
         _ISSUE_READ,
-        _LIST_ISSUES,
         _LIST_ISSUE_TYPES,
         _SEARCH_ISSUES,
      ]

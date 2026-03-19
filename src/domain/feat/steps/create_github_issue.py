@@ -62,17 +62,23 @@ class CreateGithubIssueStep:
         template = FeatTemplate.model_validate_json(input.issue_draft)
         payload = self._enrich_payload(template.to_github_payload(), input)
 
+        url = f"{GITHUB_API_URL}/repos/{self._owner}/{self._repo}/issues"
+        logger.info("github_api | POST %s\n%s", url, payload)
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{GITHUB_API_URL}/repos/{self._owner}/{self._repo}/issues",
+                url,
                 json=payload,
                 headers={
                     "Authorization": f"Bearer {config.github_token}",
                     "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
                 },
+            )
+            logger.info(
+                "github_api | response status=%s", response.status_code
             )
             response.raise_for_status()
             issue_url = response.json()["html_url"]
 
-        logger.info("GitHub issue created: %s", issue_url)
+        logger.info("github_api | issue created url=%s", issue_url)
         return CreateGithubIssueOutput(github_issue_url=issue_url)
