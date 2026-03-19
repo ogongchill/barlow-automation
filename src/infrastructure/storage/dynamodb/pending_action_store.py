@@ -4,26 +4,17 @@ import asyncio
 import logging
 import os
 import time
-from abc import ABC, abstractmethod
 from functools import partial
 
 import boto3
 from botocore.exceptions import ClientError
 
+from src.domain.common.ports.idempotency import IIdempotencyRepository
+
 logger = logging.getLogger(__name__)
 
 TABLE_NAME = os.environ.get("PENDING_ACTION_TABLE_NAME", "barlow-pending-action")
 PENDING_ACTION_TTL_SECONDS = 60 * 60  # 1시간
-
-
-class IIdempotencyRepository(ABC):
-    """멱등성 키 저장소 인터페이스."""
-
-    @abstractmethod
-    async def try_acquire(self, key: str) -> bool: ...
-
-    @abstractmethod
-    async def mark_done(self, key: str) -> None: ...
 
 
 async def _run(func, *args, **kwargs):

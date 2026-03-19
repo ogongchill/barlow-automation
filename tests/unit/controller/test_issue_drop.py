@@ -1,6 +1,8 @@
 """DroppableItem generation and drop_items filtering tests."""
 
-from src.domain.issue_templates import FeatTemplate, RefactorTemplate, FixTemplate
+from src.domain.feat.models.issue import FeatTemplate
+from src.domain.refactor.models.issue import RefactorTemplate
+from src.domain.fix.models.issue import FixTemplate
 from src.controller.issue_drop import droppable_items, drop_items, DroppableItem
 
 

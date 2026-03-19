@@ -3,26 +3,15 @@
 import asyncio
 import logging
 import os
-from abc import ABC, abstractmethod
 from functools import partial
 
 import boto3
 
-from src.workflow.models.workflow_instance import WorkflowInstance
+from src.domain.common.models.workflow_instance import IWorkflowInstanceRepository, WorkflowInstance
 
 logger = logging.getLogger(__name__)
 
 TABLE_NAME = os.environ.get("WORKFLOW_TABLE_NAME", "barlow-workflow")
-
-
-class IWorkflowInstanceRepository(ABC):
-    """WorkflowInstance 저장소 인터페이스."""
-
-    @abstractmethod
-    async def save(self, instance: WorkflowInstance) -> None: ...
-
-    @abstractmethod
-    async def get(self, workflow_id: str) -> WorkflowInstance | None: ...
 
 
 async def _run(func, *args, **kwargs):

@@ -22,17 +22,15 @@ import pytest  # noqa: E402
 
 import time  # noqa: E402
 
-from src.domain.issue_templates import (  # noqa: E402
-    FeatTemplate,
-    RefactorTemplate,
-    FixTemplate,
-)
+from src.domain.feat.models.issue import FeatTemplate  # noqa: E402
+from src.domain.refactor.models.issue import RefactorTemplate  # noqa: E402
+from src.domain.fix.models.issue import FixTemplate  # noqa: E402
 from src.agent.base import AgentResult  # noqa: E402
 from src.agent.usage import AgentUsage  # noqa: E402
-from src.workflow.models.workflow_state import FeatIssueWorkflowState  # noqa: E402
-from src.workflow.models.workflow_instance import WorkflowInstance  # noqa: E402
-from src.workflow.models.lifecycle import WorkflowStatus  # noqa: E402
-from src.workflow.models.step_result import StepResult  # noqa: E402
+from src.domain.feat.models.state import FeatIssueWorkflowState  # noqa: E402
+from src.domain.common.models.workflow_instance import WorkflowInstance  # noqa: E402
+from src.domain.common.models.lifecycle import WorkflowStatus  # noqa: E402
+from src.domain.common.models.step_result import StepResult  # noqa: E402
 
 
 @pytest.fixture()

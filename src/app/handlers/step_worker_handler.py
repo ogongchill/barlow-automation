@@ -8,16 +8,14 @@ from slack_sdk.web.async_client import AsyncWebClient
 
 from src.agent.mcp import GitHubMCPFactory
 from src.config import config
-from src.infrastructure.storage.dynamodb.pending_action_store import (
-    DynamoPendingActionStore,
-    IIdempotencyRepository,
-)
+from src.domain.common.ports.idempotency import IIdempotencyRepository
+from src.infrastructure.storage.dynamodb.pending_action_store import DynamoPendingActionStore
 from src.infrastructure.storage.dynamodb.workflow_instance_store import (
     DynamoWorkflowInstanceStore,
     IWorkflowInstanceRepository,
 )
 from src.logging_config import setup_logging
-from src.workflow.runtime.workflow_runtime import WorkflowRuntime
+from src.app.workflow_runtime import WorkflowRuntime
 
 setup_logging()
 logger = logging.getLogger(__name__)

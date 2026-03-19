@@ -1,7 +1,7 @@
 """WorkflowInstance 인메모리 저장소 -- 로컬 개발용."""
 
-from src.infrastructure.storage.dynamodb.workflow_instance_store import IWorkflowInstanceRepository
-from src.workflow.models.workflow_instance import WorkflowInstance
+from src.domain.common.models.workflow_instance import IWorkflowInstanceRepository
+from src.domain.common.models.workflow_instance import WorkflowInstance
 
 
 class MemoryWorkflowInstanceStore(IWorkflowInstanceRepository):

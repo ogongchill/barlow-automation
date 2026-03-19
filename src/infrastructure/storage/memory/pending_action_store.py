@@ -1,6 +1,6 @@
 """Pending Action 인메모리 저장소 -- 로컬 개발용."""
 
-from src.infrastructure.storage.dynamodb.pending_action_store import IIdempotencyRepository
+from src.domain.common.ports.idempotency import IIdempotencyRepository
 
 
 class MemoryPendingActionStore(IIdempotencyRepository):

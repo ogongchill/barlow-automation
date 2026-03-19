@@ -9,7 +9,7 @@ from src.controller._reply import (
     _SECTION_LIMIT,
 )
 from src.controller.issue_drop import droppable_items, DroppableItem
-from src.domain.issue_templates import FeatTemplate
+from src.domain.feat.models.issue import FeatTemplate
 
 
 class TestBuildIssueBlocks:

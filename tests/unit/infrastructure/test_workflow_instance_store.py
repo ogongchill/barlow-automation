@@ -5,9 +5,9 @@ import time
 import pytest
 from moto import mock_aws
 
-from src.workflow.models.lifecycle import WorkflowStatus
-from src.workflow.models.workflow_instance import WorkflowInstance
-from src.workflow.models.workflow_state import FeatIssueWorkflowState
+from src.domain.common.models.lifecycle import WorkflowStatus
+from src.domain.common.models.workflow_instance import WorkflowInstance
+from src.domain.feat.models.state import FeatIssueWorkflowState
 
 TABLE_NAME = "barlow-workflow"
 

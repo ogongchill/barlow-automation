@@ -136,6 +136,13 @@ class GithubToolSet(Enum):
         _GET_FILE_CONTENTS
     ]
 
+    READ_ISSUES = [
+        _ISSUE_READ,
+        _LIST_ISSUES,
+        _LIST_ISSUE_TYPES,
+        _SEARCH_ISSUES,
+     ]
+
 
 def _build_server(toolset: GithubToolSet) -> MCPServerStreamableHttp:
     return MCPServerStreamableHttp(
@@ -157,6 +164,7 @@ class GitHubMCPFactory:
 
     _read_tree: MCPServerStreamableHttp = _build_server(GithubToolSet.READ_TREE)
     _read_files: MCPServerStreamableHttp = _build_server(GithubToolSet.READ_FILES)
+    _read_issues: MCPServerStreamableHttp = _build_server(GithubToolSet.READ_ISSUES)
 
     @classmethod
     async def connect(cls) -> None:
@@ -181,3 +189,6 @@ class GitHubMCPFactory:
     def readProject(cls) -> MCPServerStreamableHttp:
         return cls._read_files
 
+    @classmethod
+    def readIssues(cls) -> MCPServerStreamableHttp:
+        return cls._read_issues

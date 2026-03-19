@@ -64,7 +64,23 @@
       "Bash(sed -i 's/\"\"run_read_planner\"\"/\"\"run_relevant_bc_finder\"\"/g' tests/integration/conftest.py tests/integration/test_lambda_worker.py)",
       "Bash(python -m pytest tests/unit/agent/test_agent_factory.py::TestRelevantBcFinder::test_bc_finder_uses_tree_mcp -q --tb=short)",
       "Bash(mv tests/unit/services/test_read_planner.py tests/unit/services/test_relevant_bc_finder.py)",
-      "Bash(sed -i 's/src\\\\.services\\\\.read_planner/src.services.relevant_bc_finder/g' tests/unit/services/test_relevant_bc_finder.py)"
+      "Bash(sed -i 's/src\\\\.services\\\\.read_planner/src.services.relevant_bc_finder/g' tests/unit/services/test_relevant_bc_finder.py)",
+      "Bash(.venv/Scripts/pytest tests/unit/domain/ tests/unit/workflow/models/ -v)",
+      "Bash(.venv/Scripts/pytest tests/ -v --tb=short)",
+      "Bash(.venv/Scripts/pytest tests/unit/workflow/ -v --tb=short)",
+      "Bash(.venv/Scripts/pytest tests/unit/workflow/mappers/ tests/unit/infrastructure/ -v --tb=short)",
+      "Bash(ls *.md)",
+      "Bash(ls -la /c/Users/yongs/Desktop/projects/barlow-automation/src/workflow/agents/*/)",
+      "Bash(python -m pytest tests/ -x -q)",
+      "Bash(TARGET_REPO=owner/repo SLACK_BOT_TOKEN=x SLACK_SIGNING_SECRET=x SLACK_APP_TOKEN=x OPENAI_API_KEY=x GITHUB_TOKEN=x python -c \":*)",
+      "Bash(TARGET_REPO=owner/repo SLACK_BOT_TOKEN=x SLACK_SIGNING_SECRET=x SLACK_APP_TOKEN=x OPENAI_API_KEY=x GITHUB_TOKEN=x python -m pytest tests/ -v --tb=short)",
+      "Bash(python -m pytest tests/unit/common/ tests/unit/feat/ -v --tb=short)",
+      "Bash(python -m pytest tests/ -v --tb=short)",
+      "Bash(sed -i 's|from src.workflow.models.lifecycle import WorkflowStatus|from src.domain.common.models.lifecycle import WorkflowStatus|g' /c/Users/yongs/Desktop/projects/barlow-automation/tests/unit/infrastructure/test_workflow_instance_store.py)",
+      "Bash(sed -i 's|from src.workflow.models.workflow_instance import WorkflowInstance|from src.domain.common.models.workflow_instance import WorkflowInstance|g' /c/Users/yongs/Desktop/projects/barlow-automation/tests/unit/infrastructure/test_workflow_instance_store.py)",
+      "Bash(sed -i 's|from src.workflow.models.workflow_state import FeatIssueWorkflowState|from src.domain.feat.models.state import FeatIssueWorkflowState|g' /c/Users/yongs/Desktop/projects/barlow-automation/tests/unit/infrastructure/test_workflow_instance_store.py)",
+      "Bash(sed -i 's|from src.domain.issue_templates import FeatTemplate, RefactorTemplate, FixTemplate|from src.domain.feat.models.issue import FeatTemplate\\\\nfrom src.domain.refactor.models.issue import RefactorTemplate\\\\nfrom src.domain.fix.models.issue import FixTemplate|g' /c/Users/yongs/Desktop/projects/barlow-automation/tests/unit/controller/test_issue_drop.py)",
+      "Bash(sed -i 's|from src.domain.issue_templates import FeatTemplate|from src.domain.feat.models.issue import FeatTemplate|g' /c/Users/yongs/Desktop/projects/barlow-automation/tests/unit/controller/test_reply.py)"
     ]
   }
 }

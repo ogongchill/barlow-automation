@@ -5,10 +5,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.domain.issue.entities import FeatTemplate
-from src.workflow.models.lifecycle import WorkflowStatus
-from src.workflow.models.workflow_instance import WorkflowInstance
-from src.workflow.models.workflow_state import FeatIssueWorkflowState
+from src.domain.feat.models.issue import FeatTemplate
+from src.domain.common.models.lifecycle import WorkflowStatus
+from src.domain.common.models.workflow_instance import WorkflowInstance
+from src.domain.feat.models.state import FeatIssueWorkflowState
 
 
 def _default_feat_template() -> FeatTemplate:
@@ -33,7 +33,7 @@ def _default_workflow_instance() -> WorkflowInstance:
         workflow_id="wf-test-123",
         workflow_type="feat_issue",
         status=WorkflowStatus.WAITING,
-        current_step="wait_issue_confirmation",
+        current_step="wait_confirmation",
         state=state,
         pending_action_token="token-abc",
         slack_channel_id="C1",

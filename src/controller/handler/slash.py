@@ -9,10 +9,13 @@ from src.controller.issue_drop import droppable_items
 from src.controller.modal_templates.feat_modal_input import FeatModalInput
 from src.controller.modal_templates.fix_modal_input import FixModalInput
 from src.controller.modal_templates.refactor_modal_input import RefactorModalInput
-from src.domain.issue.entities import BaseIssueTemplate, FeatTemplate, FixTemplate, RefactorTemplate
+from src.domain.common.models.issue_base import BaseIssueTemplate
+from src.domain.feat.models.issue import FeatTemplate
+from src.domain.fix.models.issue import FixTemplate
+from src.domain.refactor.models.issue import RefactorTemplate
 from src.domain.queue import IQueueSender
-from src.infrastructure.storage.dynamodb.workflow_instance_store import IWorkflowInstanceRepository
-from src.workflow.mappers.slack_payload_mapper import build_reject_modal, build_drop_modal
+from src.domain.common.models.workflow_instance import IWorkflowInstanceRepository
+from src.app.slack.payload_mapper import build_reject_modal, build_drop_modal
 
 logger = logging.getLogger(__name__)
 

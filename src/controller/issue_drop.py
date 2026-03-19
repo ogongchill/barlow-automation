@@ -3,12 +3,10 @@
 from dataclasses import dataclass
 from functools import singledispatch
 
-from src.domain.issue_templates import (
-    BaseIssueTemplate,
-    FeatTemplate,
-    RefactorTemplate,
-    FixTemplate,
-)
+from src.domain.common.models.issue_base import BaseIssueTemplate
+from src.domain.feat.models.issue import FeatTemplate
+from src.domain.refactor.models.issue import RefactorTemplate
+from src.domain.fix.models.issue import FixTemplate
 
 
 @dataclass
