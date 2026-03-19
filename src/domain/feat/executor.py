@@ -12,12 +12,14 @@ from src.domain.feat.agents.relevant_bc_finder.schema import Candidates
 from src.domain.feat.agents.issue_generator.prompt import SYSTEM_PROMPT as ISSUE_GEN_PROMPT
 from src.domain.feat.agents.issue_generator.schema import FeatTemplate
 from src.domain.feat.agents.issue_regenerator.prompt import SYSTEM_PROMPT as ISSUE_REGEN_PROMPT
-
+from src.domain.feat.agents.relevant_issue_finder.prompt import SYS_PROMPT as RELEVANT_ISSUE_PROMT
+from src.domain.feat.agents.relevant_issue_finder.schema import RelevantIssue as RelevantIssue
 
 class FeatAgentKey(str, Enum):
     RELEVANT_BC_FINDER = "relevant_bc_finder"
     ISSUE_GEN = "feat_issue_gen"
     ISSUE_REGEN = "feat_reissue_gen"
+    RELEVANT_ISSUE_FINDER = "relevant_issue_finder"
 
 
 class FeatAgentExecutor:
@@ -25,9 +27,26 @@ class FeatAgentExecutor:
     @staticmethod
     def build(key: FeatAgentKey) -> OpenAIAgent:
         _MAP = {
-            FeatAgentKey.RELEVANT_BC_FINDER: (BC_FINDER_PROMPT, Candidates, GitHubMCPFactory.readProjectTree),
-            FeatAgentKey.ISSUE_GEN: (ISSUE_GEN_PROMPT, FeatTemplate, GitHubMCPFactory.readProject),
-            FeatAgentKey.ISSUE_REGEN: (ISSUE_REGEN_PROMPT, FeatTemplate, GitHubMCPFactory.readProject),
+            FeatAgentKey.RELEVANT_BC_FINDER: (
+                BC_FINDER_PROMPT,
+                Candidates,
+                GitHubMCPFactory.readProjectTree
+            ),
+            FeatAgentKey.ISSUE_GEN: (
+                ISSUE_GEN_PROMPT,
+                FeatTemplate,
+                GitHubMCPFactory.readProject
+            ),
+            FeatAgentKey.ISSUE_REGEN: (
+                ISSUE_REGEN_PROMPT,
+                FeatTemplate,
+                GitHubMCPFactory.readProject
+            ),
+            FeatAgentKey.RELEVANT_ISSUE_FINDER: (
+                RELEVANT_ISSUE_PROMT,
+                RelevantIssue,
+                GitHubMCPFactory.readIssues
+            )
         }
         if key not in _MAP:
             raise KeyError(f"Unknown FeatAgentKey: {key}")

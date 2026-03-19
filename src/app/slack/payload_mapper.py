@@ -212,6 +212,79 @@ def build_bc_decision_blocks(user: str | None, bc_decision_json: str, usage_text
     return blocks
 
 
+def build_issue_decision_blocks(
+    user: str | None,
+    relevant_issues_json: str,
+    workflow_id: str,
+) -> list[dict]:
+    """relevant issue 분석 결과를 사용자 결정 버튼과 함께 Block Kit으로 반환한다."""
+    import json as _json
+
+    try:
+        ri = _json.loads(relevant_issues_json)
+    except Exception:
+        ri = {}
+
+    state = ri.get("state", "new")
+    anchor = ri.get("anchor") or {}
+    related = ri.get("related_issues") or []
+
+    state_labels = {
+        "duplicated": "⚠️ 중복 이슈가 존재합니다",
+        "exists_related": "🔗 관련 이슈가 존재합니다",
+        "new": "✅ 신규 이슈입니다",
+    }
+    mention = f"<@{user}>\n" if user else ""
+    lines = [f"{mention}*{state_labels.get(state, state)}*"]
+
+    if anchor.get("issue_no"):
+        reasons = "\n".join(f"  - {r}" for r in anchor.get("reason", []))
+        lines.append(
+            f"*앵커 이슈*: #{anchor['issue_no']} "
+            f"(신뢰도: {anchor.get('confidence', 0):.0%})"
+            + (f"\n{reasons}" if reasons else "")
+        )
+
+    if related:
+        rel_text = ", ".join(
+            f"#{r['issue_no']} ({r.get('confidence', 0):.0%})" for r in related
+        )
+        lines.append(f"*관련 이슈*: {rel_text}")
+
+    blocks: list[dict] = _section_blocks("\n\n".join(lines))
+
+    buttons: list[dict] = [
+        {
+            "type": "button",
+            "text": {"type": "plain_text", "text": "거절 (중복)"},
+            "style": "danger",
+            "action_id": "decision_reject_duplicate",
+            "value": workflow_id,
+        },
+        {
+            "type": "button",
+            "text": {"type": "plain_text", "text": "기존 이슈 확장"},
+            "action_id": "decision_extend_existing",
+            "value": workflow_id,
+        },
+        {
+            "type": "button",
+            "text": {"type": "plain_text", "text": "관련 이슈로 생성"},
+            "action_id": "decision_create_new_related",
+            "value": workflow_id,
+        },
+        {
+            "type": "button",
+            "text": {"type": "plain_text", "text": "독립 이슈로 생성"},
+            "style": "primary",
+            "action_id": "decision_create_new_independent",
+            "value": workflow_id,
+        },
+    ]
+    blocks.append({"type": "actions", "elements": buttons})
+    return blocks
+
+
 def build_bc_reject_modal(message_ts: str, channel_id: str, user_id: str) -> dict:
     """BC 거부 사유 입력 Modal을 반환한다."""
     return {

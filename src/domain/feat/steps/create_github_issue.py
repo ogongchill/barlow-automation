@@ -1,5 +1,6 @@
 """create_github_issue -- GitHub REST API issue creation."""
 
+import json
 import logging
 from dataclasses import dataclass
 
@@ -16,6 +17,8 @@ GITHUB_API_URL = "https://api.github.com"
 @dataclass(frozen=True)
 class CreateGithubIssueInput:
     issue_draft: str
+    issue_decision: str | None = None
+    relevant_issues: str | None = None
 
 
 @dataclass(frozen=True)
@@ -33,11 +36,34 @@ class CreateGithubIssueStep:
         self._owner = owner or config.github_owner
         self._repo = repo or config.github_repo
 
+    def _enrich_payload(self, payload: dict, input: CreateGithubIssueInput) -> dict:
+        """issue_decision에 따라 payload body를 보강한다."""
+        if not input.issue_decision or not input.relevant_issues:
+            return payload
+
+        try:
+            ri = json.loads(input.relevant_issues)
+            anchor = ri.get("anchor") or {}
+            anchor_no = anchor.get("issue_no")
+        except (json.JSONDecodeError, AttributeError):
+            return payload
+
+        body: str = payload.get("body", "")
+
+        if input.issue_decision == "extend_existing" and anchor_no:
+            body = f"Extends #{anchor_no}\n\n{body}"
+            payload["labels"] = payload.get("labels", []) + ["extends"]
+        elif input.issue_decision == "create_new_related" and anchor_no:
+            body = f"Related to #{anchor_no}\n\n{body}"
+
+        payload["body"] = body
+        return payload
+
     async def execute(
         self, input: CreateGithubIssueInput
     ) -> CreateGithubIssueOutput:
         template = FeatTemplate.model_validate_json(input.issue_draft)
-        payload = template.to_github_payload()
+        payload = self._enrich_payload(template.to_github_payload(), input)
 
         async with httpx.AsyncClient() as client:
             response = await client.post(

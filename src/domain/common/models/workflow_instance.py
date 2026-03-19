@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 import uuid
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from src.domain.common.models.lifecycle import WorkflowStatus

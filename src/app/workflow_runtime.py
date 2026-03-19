@@ -88,6 +88,7 @@ class WorkflowRuntime:
             logger.warning("resume | unknown action=%s", action)
             return instance
 
+        instance.state.apply_patch({"issue_decision": action})
         instance.current_step = next_step
         instance.status = WorkflowStatus.RUNNING
         instance.pending_action_token = None
@@ -143,24 +144,30 @@ class WorkflowRuntime:
 
             elif node.control_signal == ControlSignal.STOP:
                 instance.status = WorkflowStatus.COMPLETED
-                issue_url = instance.state.github_issue_url or ""
+                message = (
+                    instance.state.completion_message
+                    or (
+                        f"GitHub 이슈가 생성되었습니다: {instance.state.github_issue_url}"
+                        if instance.state.github_issue_url
+                        else "워크플로우가 완료되었습니다."
+                    )
+                )
                 if instance.slack_message_ts:
                     await self._slack_client.chat_update(
                         channel=instance.slack_channel_id,
                         ts=instance.slack_message_ts,
-                        text=f"GitHub 이슈가 생성되었습니다: {issue_url}",
+                        text=message,
                         blocks=[],
                     )
                 else:
                     await self._slack_client.chat_postMessage(
                         channel=instance.slack_channel_id,
-                        text=f"GitHub 이슈가 생성되었습니다: {issue_url}",
+                        text=message,
                     )
                 await self._repo.save(instance)
                 logger.info(
-                    "step | completed workflow_id=%s issue_url=%s",
+                    "step | completed workflow_id=%s",
                     instance.workflow_id,
-                    issue_url,
                 )
                 break
 

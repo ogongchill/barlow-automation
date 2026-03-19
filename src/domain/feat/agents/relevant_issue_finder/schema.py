@@ -1,17 +1,22 @@
-from dataclasses import Field
-from pydantic import BaseModel
-from src.domain.feat.models.issue_decision import Decision
+from src.domain.feat.models.issue_decision import RelevantIssueState
+from pydantic import BaseModel, Field
 
 
 class _RelatedIssue(BaseModel):
-    issue_no: str
-    confidence: float
+    issue_no: str = Field(..., description="Existing related issue number")
+    confidence: float = Field(..., ge=0.0, le=1.0)
 
 
-class IssueRelationDecision(BaseModel):
-    decision: Decision
-    existing_issue_number: int | None = None
-    reason: str
-    anchor_issue_number: int | None = None
-    anchor_reason: str | None = None
+class _AnchorIssue(BaseModel):
+    issue_no: str = Field(..., description="Best matching existing issue number")
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    reason: list[str] = Field(
+        default_factory=list,
+        description="Concrete reasons why this issue is the anchor"
+    )
+
+
+class RelevantIssue(BaseModel):
+    state: RelevantIssueState
+    anchor: _AnchorIssue | None = None
     related_issues: list[_RelatedIssue] = Field(default_factory=list)

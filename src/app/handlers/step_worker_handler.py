@@ -48,7 +48,11 @@ async def _process(body: str) -> None:
                 slack_user_id=event["user_id"],
                 user_message=event["user_message"],
             )
-        elif event_type in ("accept", "reject", "drop_restart"):
+        elif event_type in (
+            "accept", "reject", "drop_restart",
+            "reject_duplicate", "extend_existing",
+            "create_new_related", "create_new_independent",
+        ):
             workflow_id = event.get("workflow_id")
             if not workflow_id:
                 logger.error("resume | missing workflow_id in event type=%s", event_type)
