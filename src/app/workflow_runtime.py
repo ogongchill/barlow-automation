@@ -11,6 +11,7 @@ from src.domain.common.models.workflow_instance import (
     IWorkflowInstanceRepository,
     WorkflowInstance,
 )
+from src.domain.common.ports.active_session import IActiveSessionRepository
 
 import src.domain.feat.definition as _feat_def
 import src.domain.refactor.definition as _refactor_def
@@ -35,9 +36,11 @@ class WorkflowRuntime:
         self,
         repo: IWorkflowInstanceRepository,
         slack_client: AsyncWebClient,
+        active_session_repo: IActiveSessionRepository,
     ) -> None:
         self._repo = repo
         self._slack_client = slack_client
+        self._active_session_repo = active_session_repo
 
     async def start(
         self,
@@ -45,8 +48,25 @@ class WorkflowRuntime:
         slack_channel_id: str,
         slack_user_id: str,
         user_message: str,
-    ) -> WorkflowInstance:
+    ) -> WorkflowInstance | None:
         """새 WorkflowInstance를 생성하고 첫 step부터 실행한다."""
+        existing_id = await self._active_session_repo.get_workflow_id(
+            slack_channel_id, slack_user_id
+        )
+        if existing_id:
+            logger.warning(
+                "start | active workflow exists channel=%s user=%s workflow_id=%s",
+                slack_channel_id, slack_user_id, existing_id,
+            )
+            await self._slack_client.chat_postMessage(
+                channel=slack_channel_id,
+                text=(
+                    "이미 진행 중인 워크플로우가 있습니다. "
+                    "`/drop` 으로 중단 후 다시 시도해 주세요."
+                ),
+            )
+            return None
+
         defn = _DEFINITIONS.get(workflow_type)
         first_step = defn.FIRST_STEP if defn else "find_relevant_bc"
         instance = WorkflowInstance.create(
@@ -58,6 +78,9 @@ class WorkflowRuntime:
         )
         instance.status = WorkflowStatus.RUNNING
         await self._repo.save(instance)
+        await self._active_session_repo.set(
+            slack_channel_id, slack_user_id, instance.workflow_id
+        )
         await self._execute_until_wait(instance)
         return instance
 
@@ -108,6 +131,9 @@ class WorkflowRuntime:
                 logger.error("step | unknown step=%s", step_name)
                 instance.status = WorkflowStatus.FAILED
                 await self._repo.save(instance)
+                await self._active_session_repo.clear(
+                    instance.slack_channel_id, instance.slack_user_id
+                )
                 break
 
             logger.info(
@@ -165,6 +191,9 @@ class WorkflowRuntime:
                         text=message,
                     )
                 await self._repo.save(instance)
+                await self._active_session_repo.clear(
+                    instance.slack_channel_id, instance.slack_user_id
+                )
                 logger.info(
                     "step | completed workflow_id=%s",
                     instance.workflow_id,
@@ -179,6 +208,9 @@ class WorkflowRuntime:
                     )
                     instance.status = WorkflowStatus.FAILED
                     await self._repo.save(instance)
+                    await self._active_session_repo.clear(
+                        instance.slack_channel_id, instance.slack_user_id
+                    )
                     break
                 instance.current_step = next_step
                 await self._repo.save(instance)

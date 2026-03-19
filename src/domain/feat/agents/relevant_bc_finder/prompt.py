@@ -1,7 +1,7 @@
 """RELEVANT_BC_FINDER agent system prompt."""
 
 SYSTEM_PROMPT = """
-You generate repository candidates from a user request.
+You generate bounded_context candidates from a user request.
 
 Target repository:
 https://github.com/ogongchill/barlow/

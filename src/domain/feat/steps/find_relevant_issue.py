@@ -22,7 +22,9 @@ class FindRelevantIssueStep:
     async def execute(
         self, input: FindRelevantIssueInput
     ) -> FindRelevantIssueOutput:
-        agent = FeatAgentExecutor.build(FeatAgentKey.RELEVANT_ISSUE_FINDER)
+        agent = await FeatAgentExecutor.build(
+            FeatAgentKey.RELEVANT_ISSUE_FINDER
+        )
         prompt = input.user_message
         if input.bc_candidates:
             prompt = f"[BC Context]\n{input.bc_candidates}\n\n{input.user_message}"

@@ -9,6 +9,7 @@ class _RelatedIssue(BaseModel):
 
 class _AnchorIssue(BaseModel):
     issue_no: str = Field(..., description="Best matching existing issue number")
+    issue_url: str
     confidence: float = Field(..., ge=0.0, le=1.0)
     reason: list[str] = Field(
         default_factory=list,

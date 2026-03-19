@@ -12,7 +12,6 @@ def _sqs_event(body: dict) -> dict:
 def _patch_deps(mock_runtime):
     return [
         patch("src.app.handlers.step_worker_handler.WorkflowRuntime", return_value=mock_runtime),
-        patch("src.agent.mcp.GitHubMCPFactory.connect", new_callable=AsyncMock),
         patch("src.agent.mcp.GitHubMCPFactory.disconnect", new_callable=AsyncMock),
         patch("src.app.handlers.step_worker_handler._idempotency_repo"),
     ]
@@ -32,7 +31,6 @@ async def test_pipeline_start_calls_runtime_start():
     })
 
     with patch("src.app.handlers.step_worker_handler.WorkflowRuntime", return_value=mock_runtime), \
-         patch("src.agent.mcp.GitHubMCPFactory.connect", new_callable=AsyncMock), \
          patch("src.agent.mcp.GitHubMCPFactory.disconnect", new_callable=AsyncMock), \
          patch("src.app.handlers.step_worker_handler._idempotency_repo") as mock_idempotency:
         mock_idempotency.try_acquire = AsyncMock(return_value=True)
@@ -57,7 +55,6 @@ async def test_accept_calls_runtime_resume():
     })
 
     with patch("src.app.handlers.step_worker_handler.WorkflowRuntime", return_value=mock_runtime), \
-         patch("src.agent.mcp.GitHubMCPFactory.connect", new_callable=AsyncMock), \
          patch("src.agent.mcp.GitHubMCPFactory.disconnect", new_callable=AsyncMock), \
          patch("src.app.handlers.step_worker_handler._idempotency_repo") as mock_idempotency:
         mock_idempotency.try_acquire = AsyncMock(return_value=True)
@@ -83,7 +80,6 @@ async def test_reject_calls_runtime_resume_with_feedback():
     })
 
     with patch("src.app.handlers.step_worker_handler.WorkflowRuntime", return_value=mock_runtime), \
-         patch("src.agent.mcp.GitHubMCPFactory.connect", new_callable=AsyncMock), \
          patch("src.agent.mcp.GitHubMCPFactory.disconnect", new_callable=AsyncMock), \
          patch("src.app.handlers.step_worker_handler._idempotency_repo") as mock_idempotency:
         mock_idempotency.try_acquire = AsyncMock(return_value=True)

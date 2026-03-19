@@ -22,7 +22,7 @@ class RegenerateIssueDraftStep:
     async def execute(
         self, input: RegenerateIssueDraftInput
     ) -> RegenerateIssueDraftOutput:
-        agent = FeatAgentExecutor.build(FeatAgentKey.ISSUE_REGEN)
+        agent = await FeatAgentExecutor.build(FeatAgentKey.ISSUE_REGEN)
         parts: list[str] = []
         if input.bc_candidates:
             parts.append(f"[BC Finder Context]\n{input.bc_candidates}")

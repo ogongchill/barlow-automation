@@ -22,7 +22,7 @@ class GenerateIssueDraftStep:
     async def execute(
         self, input: GenerateIssueDraftInput
     ) -> GenerateIssueDraftOutput:
-        agent = FeatAgentExecutor.build(FeatAgentKey.ISSUE_GEN)
+        agent = await FeatAgentExecutor.build(FeatAgentKey.ISSUE_GEN)
         parts: list[str] = []
         if input.bc_candidates:
             parts.append(f"[BC Finder Candidates]\n{input.bc_candidates}")

@@ -8,8 +8,14 @@ from slack_sdk.web.async_client import AsyncWebClient
 
 from src.agent.mcp import GitHubMCPFactory
 from src.config import config
+from src.domain.common.ports.active_session import IActiveSessionRepository
 from src.domain.common.ports.idempotency import IIdempotencyRepository
-from src.infrastructure.storage.dynamodb.pending_action_store import DynamoPendingActionStore
+from src.infrastructure.storage.dynamodb.active_session_store import (
+    DynamoActiveSessionStore,
+)
+from src.infrastructure.storage.dynamodb.pending_action_store import (
+    DynamoPendingActionStore,
+)
 from src.infrastructure.storage.dynamodb.workflow_instance_store import (
     DynamoWorkflowInstanceStore,
     IWorkflowInstanceRepository,
@@ -22,6 +28,19 @@ logger = logging.getLogger(__name__)
 
 _workflow_repo: IWorkflowInstanceRepository = DynamoWorkflowInstanceStore()
 _idempotency_repo: IIdempotencyRepository = DynamoPendingActionStore()
+_active_session_repo: IActiveSessionRepository = DynamoActiveSessionStore()
+
+
+def configure(
+    workflow_repo: IWorkflowInstanceRepository,
+    idempotency_repo: IIdempotencyRepository,
+    active_session_repo: IActiveSessionRepository,
+) -> None:
+    """진입점(로컬 서버)에서 의존성을 주입한다. Lambda는 호출하지 않는다."""
+    global _workflow_repo, _idempotency_repo, _active_session_repo
+    _workflow_repo = workflow_repo
+    _idempotency_repo = idempotency_repo
+    _active_session_repo = active_session_repo
 
 
 async def _process(body: str) -> None:
@@ -34,10 +53,13 @@ async def _process(body: str) -> None:
         return
 
     client = AsyncWebClient(token=config.slack_bot_token)
-    runtime = WorkflowRuntime(repo=_workflow_repo, slack_client=client)
+    runtime = WorkflowRuntime(
+        repo=_workflow_repo,
+        slack_client=client,
+        active_session_repo=_active_session_repo,
+    )
 
     channel_id = event.get("channel_id", "")
-    await GitHubMCPFactory.connect()
     try:
         if event_type == "pipeline_start":
             subcommand = event["subcommand"]
@@ -55,9 +77,13 @@ async def _process(body: str) -> None:
         ):
             workflow_id = event.get("workflow_id")
             if not workflow_id:
-                logger.error("resume | missing workflow_id in event type=%s", event_type)
+                logger.error(
+                    "resume | missing workflow_id in event type=%s", event_type
+                )
                 return
-            feedback = event.get("additional_requirements") or event.get("feedback")
+            feedback = (
+                event.get("additional_requirements") or event.get("feedback")
+            )
             dropped_ids = event.get("dropped_ids")
             instance = await runtime.resume(
                 workflow_id=workflow_id,
@@ -74,7 +100,9 @@ async def _process(body: str) -> None:
             await _idempotency_repo.mark_done(dedup_id)
 
     except Exception as e:
-        logger.error("pipeline failed type=%s error=%s", event_type, e, exc_info=True)
+        logger.error(
+            "pipeline failed type=%s error=%s", event_type, e, exc_info=True
+        )
         if not channel_id and event_type in ("reject", "drop_restart", "accept"):
             workflow_id = event.get("workflow_id", "")
             if workflow_id:

@@ -2,6 +2,13 @@ import os
 import sys
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+_root = Path(__file__).parent.parent
+load_dotenv(_root / "default.env", override=True)
+# load_dotenv(_root / ".env", override=True)
 
 
 class OsType(str, Enum):
@@ -14,7 +21,6 @@ class Config:
     slack_bot_token: str
     slack_signing_secret: str
     slack_app_token: str        # Socket Mode용 (xapp-...)
-    # anthropic_api_key: str
     github_token: str
     openai_api_key: str
     sqs_queue_url: str

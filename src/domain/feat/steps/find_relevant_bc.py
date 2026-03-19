@@ -22,7 +22,9 @@ class FindRelevantBcOutput:
 class FindRelevantBcStep:
 
     async def execute(self, input: FindRelevantBcInput) -> FindRelevantBcOutput:
-        agent = FeatAgentExecutor.build(FeatAgentKey.RELEVANT_BC_FINDER)
+        agent = await FeatAgentExecutor.build(
+            FeatAgentKey.RELEVANT_BC_FINDER
+        )
         result = await agent.run(input.user_message)
         return FindRelevantBcOutput(
             bc_candidates=result.output,

@@ -160,35 +160,45 @@ def _build_server(toolset: GithubToolSet) -> MCPServerStreamableHttp:
 
 
 class GitHubMCPFactory:
-    """앱 생명 주기와 동일하게 MCP 서버를 관리하는 팩토리."""
+    """필요한 MCP 서버만 lazy connect하는 팩토리."""
 
     _read_tree: MCPServerStreamableHttp = _build_server(GithubToolSet.READ_TREE)
     _read_files: MCPServerStreamableHttp = _build_server(GithubToolSet.READ_FILES)
     _read_issues: MCPServerStreamableHttp = _build_server(GithubToolSet.READ_ISSUES)
+    _connected: set[str] = set()
 
     @classmethod
-    async def connect(cls) -> None:
-        """앱 시작 시 모든 MCP 서버를 연결한다."""
-        await cls._read_tree.connect()
-        await cls._read_files.connect()
+    async def _ensure(
+        cls, server: MCPServerStreamableHttp, name: str
+    ) -> MCPServerStreamableHttp:
+        if name not in cls._connected:
+            await server.connect()
+            cls._connected.add(name)
+        return server
 
     @classmethod
     async def disconnect(cls) -> None:
-        """앱 종료 시 모든 MCP 서버를 해제한다."""
-        for server in (cls._read_tree, cls._read_files):
+        """연결된 MCP 서버만 해제한다."""
+        servers = {
+            "read_tree": cls._read_tree,
+            "read_files": cls._read_files,
+            "read_issues": cls._read_issues,
+        }
+        for name in list(cls._connected):
             try:
-                await server.cleanup()
+                await servers[name].cleanup()
             except BaseException as e:
                 logger.debug("mcp cleanup suppressed: %s", e)
+        cls._connected.clear()
 
     @classmethod
-    def readProjectTree(cls) -> MCPServerStreamableHttp:
-        return cls._read_tree
+    async def readProjectTree(cls) -> MCPServerStreamableHttp:
+        return await cls._ensure(cls._read_tree, "read_tree")
 
     @classmethod
-    def readProject(cls) -> MCPServerStreamableHttp:
-        return cls._read_files
+    async def readProject(cls) -> MCPServerStreamableHttp:
+        return await cls._ensure(cls._read_files, "read_files")
 
     @classmethod
-    def readIssues(cls) -> MCPServerStreamableHttp:
-        return cls._read_issues
+    async def readIssues(cls) -> MCPServerStreamableHttp:
+        return await cls._ensure(cls._read_issues, "read_issues")

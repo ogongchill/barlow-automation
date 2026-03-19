@@ -10,17 +10,21 @@ from slack_bolt.request.async_request import AsyncBoltRequest
 from src.controller.app import create_app
 from src.controller.handler import slash
 from src.controller.router import register
+from src.infrastructure.storage.dynamodb.active_session_store import (
+    DynamoActiveSessionStore,
+)
 from src.infrastructure.storage.dynamodb.workflow_instance_store import (
     DynamoWorkflowInstanceStore,
 )
-from src.logging_config import setup_logging
 from src.infrastructure.queue.sqs_publisher import SqsQueueSender
+from src.logging_config import setup_logging
 
 setup_logging()
 logger = logging.getLogger(__name__)
 
 slash.configure(
     workflow_repo=DynamoWorkflowInstanceStore(),
+    active_session_repo=DynamoActiveSessionStore(),
     queue=SqsQueueSender(),
 )
 

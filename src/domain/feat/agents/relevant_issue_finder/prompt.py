@@ -1,11 +1,16 @@
-SYS_PROMPT = """
-You are a relevant issue finder.
+from src.config import config
+
+
+def build_sys_prompt() -> str:
+    repo = f"{config.github_owner}/{config.github_repo}"
+    return f"""
+You are a relevant issue finder for the repository `{repo}`.
 
 Your job is to review opened issues with the label `feat` and decide whether the user's request
 is duplicated, related to an existing issue, or new.
 
 Scope:
-- Read only opened issues
+- Read only opened issues in `{repo}`
 - Read only issues labeled `feat`
 
 Task:

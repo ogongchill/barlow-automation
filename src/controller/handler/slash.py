@@ -8,18 +8,25 @@ from slack_bolt.async_app import AsyncApp
 from src.controller.issue_drop import droppable_items
 from src.controller.modal_templates.feat_modal_input import FeatModalInput
 from src.controller.modal_templates.fix_modal_input import FixModalInput
-from src.controller.modal_templates.refactor_modal_input import RefactorModalInput
+from src.controller.modal_templates.refactor_modal_input import (
+    RefactorModalInput,
+)
 from src.domain.common.models.issue_base import BaseIssueTemplate
+from src.domain.common.models.lifecycle import WorkflowStatus
+from src.domain.common.models.workflow_instance import (
+    IWorkflowInstanceRepository,
+)
+from src.domain.common.ports.active_session import IActiveSessionRepository
 from src.domain.feat.models.issue import FeatTemplate
 from src.domain.fix.models.issue import FixTemplate
-from src.domain.refactor.models.issue import RefactorTemplate
 from src.domain.queue import IQueueSender
-from src.domain.common.models.workflow_instance import IWorkflowInstanceRepository
+from src.domain.refactor.models.issue import RefactorTemplate
 from src.app.slack.payload_mapper import build_reject_modal, build_drop_modal
 
 logger = logging.getLogger(__name__)
 
 _workflow_repo: IWorkflowInstanceRepository | None = None
+_active_session_repo: IActiveSessionRepository | None = None
 _queue: IQueueSender | None = None
 
 _TEMPLATE_CLS: dict[str, type[BaseIssueTemplate]] = {
@@ -29,10 +36,15 @@ _TEMPLATE_CLS: dict[str, type[BaseIssueTemplate]] = {
 }
 
 
-def configure(workflow_repo: IWorkflowInstanceRepository, queue: IQueueSender) -> None:
+def configure(
+    workflow_repo: IWorkflowInstanceRepository,
+    active_session_repo: IActiveSessionRepository,
+    queue: IQueueSender,
+) -> None:
     """진입점(Lambda / 로컬 서버)에서 의존성을 주입한다."""
-    global _workflow_repo, _queue
+    global _workflow_repo, _active_session_repo, _queue
     _workflow_repo = workflow_repo
+    _active_session_repo = active_session_repo
     _queue = queue
 
 
@@ -59,6 +71,38 @@ def _modal_view(
 
 
 def register(app: AsyncApp) -> None:
+
+    # ── /drop — 현재 워크플로우 즉시 중단 ────────────────────────────────────
+
+    @app.command("/drop")
+    async def handle_drop_workflow(ack, client, command):
+        await ack()
+        assert _active_session_repo is not None, "slash.configure() 미호출"
+        channel_id = command["channel_id"]
+        user_id = command["user_id"]
+        workflow_id = await _active_session_repo.get_workflow_id(
+            channel_id, user_id
+        )
+        if not workflow_id:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text="진행 중인 워크플로우가 없습니다.",
+            )
+            return
+
+        assert _workflow_repo is not None, "slash.configure() 미호출"
+        instance = await _workflow_repo.get(workflow_id)
+        if instance:
+            instance.status = WorkflowStatus.CANCELLED
+            await _workflow_repo.save(instance)
+        await _active_session_repo.clear(channel_id, user_id)
+        await client.chat_postMessage(
+            channel=channel_id,
+            text="워크플로우가 중단되었습니다.",
+        )
+        logger.info(
+            "drop | cancelled workflow_id=%s user=%s", workflow_id, user_id
+        )
 
     # ── 슬래시 커맨드 → Modal 열기 ──────────────────────────────────────────
 
@@ -234,3 +278,29 @@ def register(app: AsyncApp) -> None:
             "dropped_ids": [opt["value"] for opt in selected],
             "dedup_id": body["view"]["id"],
         })
+
+    # ── Issue Decision Actions ────────────────────────────────────────────────
+
+    _DECISION_ACTION_MAP = {
+        "decision_reject_duplicate":     "reject_duplicate",
+        "decision_extend_existing":      "extend_existing",
+        "decision_create_new_related":   "create_new_related",
+        "decision_create_new_independent": "create_new_independent",
+    }
+
+    for _action_id, _event_type in _DECISION_ACTION_MAP.items():
+
+        def _make_decision_handler(event_type: str):
+            async def _handler(ack, body):
+                await ack()
+                workflow_id = (body["actions"][0].get("value") or "").strip()
+                _put_sqs({
+                    "type": event_type,
+                    "workflow_id": workflow_id,
+                    "user_id": body["user"]["id"],
+                    "channel_id": body["channel"]["id"],
+                    "dedup_id": body["actions"][0]["action_ts"],
+                })
+            return _handler
+
+        app.action(_action_id)(_make_decision_handler(_event_type))
