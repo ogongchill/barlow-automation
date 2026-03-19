@@ -5,35 +5,24 @@ import logging
 
 from slack_bolt.async_app import AsyncApp
 
-from src.controller.issue_drop import droppable_items
 from src.controller.modal_templates.feat_modal_input import FeatModalInput
 from src.controller.modal_templates.fix_modal_input import FixModalInput
 from src.controller.modal_templates.refactor_modal_input import (
     RefactorModalInput,
 )
-from src.domain.common.models.issue_base import BaseIssueTemplate
 from src.domain.common.models.lifecycle import WorkflowStatus
 from src.domain.common.models.workflow_instance import (
     IWorkflowInstanceRepository,
 )
 from src.domain.common.ports.active_session import IActiveSessionRepository
-from src.domain.feat.models.issue import FeatTemplate
-from src.domain.fix.models.issue import FixTemplate
 from src.domain.queue import IQueueSender
-from src.domain.refactor.models.issue import RefactorTemplate
-from src.app.slack.payload_mapper import build_reject_modal, build_drop_modal
+from src.app.slack.payload_mapper import build_reject_modal
 
 logger = logging.getLogger(__name__)
 
 _workflow_repo: IWorkflowInstanceRepository | None = None
 _active_session_repo: IActiveSessionRepository | None = None
 _queue: IQueueSender | None = None
-
-_TEMPLATE_CLS: dict[str, type[BaseIssueTemplate]] = {
-    "feat": FeatTemplate,
-    "refactor": RefactorTemplate,
-    "fix": FixTemplate,
-}
 
 
 def configure(
@@ -235,49 +224,24 @@ def register(app: AsyncApp) -> None:
     @app.action("issue_drop")
     async def handle_drop(ack, client, body):
         await ack()
-        assert _workflow_repo is not None, "slash.configure() 가 호출되지 않았습니다"
+        assert _active_session_repo is not None, "slash.configure() 미호출"
+        assert _workflow_repo is not None, "slash.configure() 미호출"
         workflow_id = (body["actions"][0].get("value") or "").strip()
+        channel_id = body["channel"]["id"]
+        user_id = body["user"]["id"]
+
         instance = await _workflow_repo.get(workflow_id)
-        if not instance:
-            logger.warning("drop | workflow not found workflow_id=%s", workflow_id)
-            return
-
-        subcommand = instance.workflow_type.replace("_issue", "")
-        template_cls = _TEMPLATE_CLS.get(subcommand, FeatTemplate)
-        try:
-            template = template_cls.model_validate_json(instance.state.issue_draft or "{}")
-        except Exception:
-            logger.warning("drop | failed to parse issue_draft for workflow_id=%s", workflow_id)
-            return
-
-        await client.views_open(
-            trigger_id=body["trigger_id"],
-            view=build_drop_modal(
-                workflow_id=workflow_id,
-                channel_id=body["channel"]["id"],
-                user_id=body["user"]["id"],
-                items=droppable_items(template),
-            ),
+        if instance:
+            instance.status = WorkflowStatus.CANCELLED
+            await _workflow_repo.save(instance)
+        await _active_session_repo.clear(channel_id, user_id)
+        await client.chat_postMessage(
+            channel=channel_id,
+            text="워크플로우가 중단되었습니다.",
         )
-
-    @app.view("drop_submit")
-    async def handle_drop_submit(ack, body, view):
-        await ack()
-        meta = json.loads(view.get("private_metadata") or "{}")
-        selected = (
-            view["state"]["values"]
-            .get("drop_selection", {})
-            .get("items", {})
-            .get("selected_options") or []
+        logger.info(
+            "drop | cancelled workflow_id=%s user=%s", workflow_id, user_id
         )
-        _put_sqs({
-            "type": "drop_restart",
-            "workflow_id": meta.get("workflow_id", ""),
-            "user_id": meta["user_id"],
-            "channel_id": meta["channel_id"],
-            "dropped_ids": [opt["value"] for opt in selected],
-            "dedup_id": body["view"]["id"],
-        })
 
     # ── Issue Decision Actions ────────────────────────────────────────────────
 

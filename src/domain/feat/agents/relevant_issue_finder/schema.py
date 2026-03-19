@@ -21,3 +21,4 @@ class RelevantIssue(BaseModel):
     state: RelevantIssueState
     anchor: _AnchorIssue | None = None
     related_issues: list[_RelatedIssue] = Field(default_factory=list)
+    reason: str

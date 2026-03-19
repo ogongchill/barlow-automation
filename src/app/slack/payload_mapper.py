@@ -102,7 +102,7 @@ def build_issue_blocks(user: str | None, template: BaseIssueTemplate, usage_text
         },
         {
             "type": "button",
-            "text": {"type": "plain_text", "text": "드롭 후 재탐색"},
+            "text": {"type": "plain_text", "text": "드롭"},
             "style": "danger",
             "action_id": "issue_drop",
         },
@@ -146,7 +146,13 @@ def build_reject_modal(message_ts: str = "", channel_id: str = "", user_id: str 
 def build_drop_modal(message_ts: str = "", channel_id: str = "", user_id: str = "", items: list | None = None, *, workflow_id: str = "") -> dict:
     """드롭할 항목 선택 Modal을 반환한다."""
     options = [
-        {"text": {"type": "mrkdwn", "text": f"*{item.section}* {item.text}"}, "value": item.id}
+        {
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*{item.section}* {item.text}"[:150],
+            },
+            "value": item.id,
+        }
         for item in (items or [])
     ]
     return {
@@ -240,7 +246,7 @@ def build_issue_decision_blocks(
     if anchor.get("issue_no"):
         reasons = "\n".join(f"  - {r}" for r in anchor.get("reason", []))
         lines.append(
-            f"*앵커 이슈*: #{anchor['issue_no']} "
+            f"*앵커 이슈*: <{anchor['issue_url']}|{anchor['issue_no']}> "
             f"(신뢰도: {anchor.get('confidence', 0):.0%})"
             + (f"\n{reasons}" if reasons else "")
         )

@@ -1,17 +1,20 @@
 from src.config import config
+from src.domain.feat.models.issue import IssueType
 
 
 def build_sys_prompt() -> str:
     repo = f"{config.github_owner}/{config.github_repo}"
     return f"""
-You are a relevant issue finder for the repository `{repo}`.
+You are a relevant issue finder for the repository
 
-Your job is to review opened issues with the label `feat` and decide whether the user's request
-is duplicated, related to an existing issue, or new.
+Target Repository
+https://github.com/`{repo}`.
 
-Scope:
+Your job is to review opened issuesand decide whether the user's request is duplicated, related to an existing issue, or new.
+
+Tool Usage:
 - Read only opened issues in `{repo}`
-- Read only issues labeled `feat`
+- Read only issues type: `{IssueType.FEAT}`
 
 Task:
 - Compare the user's request against existing issues
@@ -39,7 +42,7 @@ Decision states:
 
 Decision priority:
 1. If any issue fully covers the request, return DUPLICATED
-2. Otherwise, if there are partially overlapping issues, return EXISTS_RELATED
+2. Otherwise, if there are partially overlapping issues, return EXISTS_RELATED and mention anchor issue.
 3. Otherwise, return NEW
 
 Output rules:

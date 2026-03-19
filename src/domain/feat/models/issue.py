@@ -1,10 +1,19 @@
 """feat 이슈 템플릿 -- FeatTemplate + to_github_body()."""
 
+from enum import Enum
+
 from src.domain.common.models.issue_base import BaseIssueTemplate, Label
 
 
 def _bullet(items: list[str]) -> str:
     return "\n".join(f"- {item}" for item in items)
+
+
+class IssueType(str, Enum):
+
+    FEAT = "Feature"
+    REFACTOR = "Refactor"
+    FIX = "Fix"
 
 
 class FeatTemplate(BaseIssueTemplate):

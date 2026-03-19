@@ -226,23 +226,33 @@ async def test_issue_reject_opens_reject_modal(ack_app, mock_slack_client):
     assert meta["channel_id"] == "C1"
 
 
-async def test_issue_drop_opens_drop_modal(ack_app, mock_slack_client, mock_workflow_repo):
-    with patch("src.controller.handler.slash._workflow_repo", mock_workflow_repo):
+async def test_issue_drop_cancels_workflow(ack_app, mock_slack_client, mock_workflow_repo):
+    mock_active_session = AsyncMock()
+    mock_active_session.clear = AsyncMock()
+    with patch("src.controller.handler.slash._workflow_repo", mock_workflow_repo), \
+         patch("src.controller.handler.slash._active_session_repo", mock_active_session):
         await ack_app.async_dispatch(_req(_action_body("issue_drop")))
 
     mock_workflow_repo.get.assert_awaited_once_with(_WORKFLOW_ID)
-    mock_slack_client.views_open.assert_awaited_once()
-    view = mock_slack_client.views_open.call_args.kwargs["view"]
-    assert view["callback_id"] == "drop_submit"
+    mock_workflow_repo.save.assert_awaited_once()
+    saved = mock_workflow_repo.save.call_args.args[0]
+    from src.domain.common.models.lifecycle import WorkflowStatus
+    assert saved.status == WorkflowStatus.CANCELLED
+    mock_active_session.clear.assert_awaited_once_with("C1", "U1")
+    mock_slack_client.chat_postMessage.assert_awaited_once()
 
 
-async def test_issue_drop_no_record_skips_modal(ack_app, mock_slack_client):
+async def test_issue_drop_no_record_still_clears_session(ack_app, mock_slack_client):
     empty_repo = AsyncMock()
     empty_repo.get = AsyncMock(return_value=None)
-    with patch("src.controller.handler.slash._workflow_repo", empty_repo):
+    mock_active_session = AsyncMock()
+    mock_active_session.clear = AsyncMock()
+    with patch("src.controller.handler.slash._workflow_repo", empty_repo), \
+         patch("src.controller.handler.slash._active_session_repo", mock_active_session):
         await ack_app.async_dispatch(_req(_action_body("issue_drop")))
 
-    mock_slack_client.views_open.assert_not_awaited()
+    mock_active_session.clear.assert_awaited_once_with("C1", "U1")
+    mock_slack_client.chat_postMessage.assert_awaited_once()
 
 
 # ── Reject/Drop submit → SQS ──────────────────────────────────────────────────
@@ -269,26 +279,3 @@ async def test_reject_submit_none_when_no_additional(ack_app, mock_sqs_client):
     assert payload["additional_requirements"] is None
 
 
-async def test_drop_submit_sends_drop_restart_to_sqs(ack_app, mock_sqs_client):
-    meta = json.dumps({"workflow_id": "wf-1", "channel_id": "C1", "user_id": "U1"})
-    values = {"drop_selection": {"items": {"selected_options": [
-        {"value": "new_features::0"},
-        {"value": "domain_rules::0"},
-    ]}}}
-    body = _view_body("drop_submit", values, private_metadata=meta)
-    await ack_app.async_dispatch(_req(body))
-
-    payload = json.loads(json.dumps(mock_sqs_client.send.call_args.args[0]))
-    assert payload["type"] == "drop_restart"
-    assert payload["workflow_id"] == "wf-1"
-    assert set(payload["dropped_ids"]) == {"new_features::0", "domain_rules::0"}
-
-
-async def test_drop_submit_empty_selection(ack_app, mock_sqs_client):
-    meta = json.dumps({"workflow_id": "wf-1", "channel_id": "C1", "user_id": "U1"})
-    values = {"drop_selection": {"items": {"selected_options": []}}}
-    body = _view_body("drop_submit", values, private_metadata=meta)
-    await ack_app.async_dispatch(_req(body))
-
-    payload = json.loads(json.dumps(mock_sqs_client.send.call_args.args[0]))
-    assert payload["dropped_ids"] == []
