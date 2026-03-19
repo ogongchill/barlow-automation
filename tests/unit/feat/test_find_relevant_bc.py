@@ -1,11 +1,14 @@
 """FindRelevantBcStep 단위 테스트."""
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.domain.feat.models.state import FeatIssueWorkflowState
-from src.domain.feat.steps.find_relevant_bc import FindRelevantBcStep
+from src.domain.feat.steps.find_relevant_bc import (
+    FindRelevantBcInput,
+    FindRelevantBcStep,
+)
 
 
-async def test_execute_returns_bc_candidates_in_patch():
+async def test_execute_returns_bc_candidates():
     mock_agent = AsyncMock()
     mock_agent.run.return_value = MagicMock(
         output='{"items":[]}',
@@ -17,12 +20,9 @@ async def test_execute_returns_bc_candidates_in_patch():
         return_value=mock_agent,
     ):
         step = FindRelevantBcStep()
-        state = FeatIssueWorkflowState(user_message="북마크 기능 추가")
-        result = await step.execute(state)
+        result = await step.execute(FindRelevantBcInput(user_message="북마크 기능 추가"))
 
-    assert result.status == "success"
-    assert result.control_signal == "continue"
-    assert result.state_patch["bc_candidates"] == '{"items":[]}'
+    assert result.bc_candidates == '{"items":[]}'
 
 
 async def test_execute_passes_user_message_to_agent():
@@ -37,8 +37,7 @@ async def test_execute_passes_user_message_to_agent():
         return_value=mock_agent,
     ):
         step = FindRelevantBcStep()
-        state = FeatIssueWorkflowState(user_message="my request")
-        await step.execute(state)
+        await step.execute(FindRelevantBcInput(user_message="my request"))
 
     mock_agent.run.assert_called_once_with("my request")
 
@@ -55,8 +54,7 @@ async def test_execute_includes_token_trace():
         return_value=mock_agent,
     ):
         step = FindRelevantBcStep()
-        state = FeatIssueWorkflowState(user_message="msg")
-        result = await step.execute(state)
+        result = await step.execute(FindRelevantBcInput(user_message="msg"))
 
     assert result.internal_trace["input_tokens"] == 100
     assert result.internal_trace["output_tokens"] == 50

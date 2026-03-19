@@ -80,7 +80,10 @@
       "Bash(sed -i 's|from src.workflow.models.workflow_instance import WorkflowInstance|from src.domain.common.models.workflow_instance import WorkflowInstance|g' /c/Users/yongs/Desktop/projects/barlow-automation/tests/unit/infrastructure/test_workflow_instance_store.py)",
       "Bash(sed -i 's|from src.workflow.models.workflow_state import FeatIssueWorkflowState|from src.domain.feat.models.state import FeatIssueWorkflowState|g' /c/Users/yongs/Desktop/projects/barlow-automation/tests/unit/infrastructure/test_workflow_instance_store.py)",
       "Bash(sed -i 's|from src.domain.issue_templates import FeatTemplate, RefactorTemplate, FixTemplate|from src.domain.feat.models.issue import FeatTemplate\\\\nfrom src.domain.refactor.models.issue import RefactorTemplate\\\\nfrom src.domain.fix.models.issue import FixTemplate|g' /c/Users/yongs/Desktop/projects/barlow-automation/tests/unit/controller/test_issue_drop.py)",
-      "Bash(sed -i 's|from src.domain.issue_templates import FeatTemplate|from src.domain.feat.models.issue import FeatTemplate|g' /c/Users/yongs/Desktop/projects/barlow-automation/tests/unit/controller/test_reply.py)"
+      "Bash(sed -i 's|from src.domain.issue_templates import FeatTemplate|from src.domain.feat.models.issue import FeatTemplate|g' /c/Users/yongs/Desktop/projects/barlow-automation/tests/unit/controller/test_reply.py)",
+      "Bash(cd /tmp)",
+      "Bash(zip -r lambda-deps.zip lambda-deps -x \"*/win32*\" -x \"*/pythonwin*\" -x \"*/win32com*\" -x \"*/PyWin32*\" -x \"*__pycache__*\" -x \"*.pyc\" -q)",
+      "Bash(grep -n \"control_signal\\\\|\"\"continue\"\"\\\\|\"\"wait_for_user\"\"\\\\|\"\"stop\"\"\\\\|\"\"success\"\"\\\\|\"\"waiting\"\"\\\\|\"\"failed\"\"\" /c/Users/yongs/Desktop/projects/barlow-automation/src/domain/feat/steps/*.py /c/Users/yongs/Desktop/projects/barlow-automation/src/app/workflow_runtime.py)"
     ]
   }
 }

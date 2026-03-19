@@ -1,25 +1,20 @@
-"""workflow_runtime -- WorkflowInstance 생성·재개·step 실행을 조율하는 핵심 오케스트레이터."""
+"""workflow_runtime -- WorkflowInstance 생성·재개·step 실행 오케스트레이터."""
 
 import logging
 import uuid
 
 from slack_sdk.web.async_client import AsyncWebClient
 
-from src.domain.common.models.workflow_instance import IWorkflowInstanceRepository
 from src.domain.common.models.lifecycle import WorkflowStatus
-from src.domain.common.models.workflow_instance import WorkflowInstance
+from src.domain.common.models.step_result import ControlSignal
+from src.domain.common.models.workflow_instance import (
+    IWorkflowInstanceRepository,
+    WorkflowInstance,
+)
 
-# feature definitions
 import src.domain.feat.definition as _feat_def
 import src.domain.refactor.definition as _refactor_def
 import src.domain.fix.definition as _fix_def
-
-# feat steps
-from src.domain.feat.steps.create_github_issue import CreateGithubIssueStep
-from src.domain.feat.steps.find_relevant_bc import FindRelevantBcStep
-from src.domain.feat.steps.generate_issue_draft import GenerateIssueDraftStep
-from src.domain.feat.steps.regenerate_issue_draft import RegenerateIssueDraftStep
-from src.domain.feat.steps.wait_confirmation import WaitConfirmationStep
 
 # state registration (side effect import)
 import src.domain.feat.models.state  # noqa: F401
@@ -31,11 +26,6 @@ _DEFINITIONS = {
     "refactor_issue": _refactor_def,
     "fix_issue":      _fix_def,
 }
-
-
-def _subcommand_from(workflow_type: str) -> str:
-    """workflow_type에서 subcommand를 추출한다. e.g. 'feat_issue' -> 'feat'"""
-    return workflow_type.replace("_issue", "")
 
 
 class WorkflowRuntime:
@@ -81,7 +71,9 @@ class WorkflowRuntime:
         """기존 WorkflowInstance를 재개하고 사용자 액션에 따라 실행한다."""
         instance = await self._repo.get(workflow_id)
         if not instance:
-            logger.warning("resume | workflow not found workflow_id=%s", workflow_id)
+            logger.warning(
+                "resume | workflow not found workflow_id=%s", workflow_id
+            )
             return None
 
         if feedback:
@@ -105,24 +97,35 @@ class WorkflowRuntime:
 
     async def _execute_until_wait(self, instance: WorkflowInstance) -> None:
         """WAITING 또는 COMPLETED 상태에 도달할 때까지 step을 순차 실행한다."""
-        subcommand = _subcommand_from(instance.workflow_type)
         defn = _DEFINITIONS.get(instance.workflow_type)
         graph = defn.GRAPH if defn else {}
 
         while True:
             step_name = instance.current_step
+            node = graph.get(step_name)
+            if not node:
+                logger.error("step | unknown step=%s", step_name)
+                instance.status = WorkflowStatus.FAILED
+                await self._repo.save(instance)
+                break
+
             logger.info(
                 "step | executing workflow_id=%s step=%s",
                 instance.workflow_id,
                 step_name,
             )
 
-            step = self._build_step(step_name, subcommand, instance)
-            result = await step.execute(instance.state)
-            instance.state.apply_patch(result.state_patch)
+            input = node.extract_input(instance)
+            output = await node.step.execute(input)
+            node.apply_output(instance.state, output)
 
-            if result.control_signal == "wait_for_user":
-                blocks = (result.user_action_request or {}).get("blocks", [])
+            if node.control_signal == ControlSignal.WAIT_FOR_USER:
+                user_action = (
+                    node.extract_user_action(output)
+                    if node.extract_user_action
+                    else {}
+                )
+                blocks = user_action.get("blocks", [])
                 response = await self._slack_client.chat_postMessage(
                     channel=instance.slack_channel_id,
                     blocks=blocks,
@@ -138,7 +141,7 @@ class WorkflowRuntime:
                 )
                 break
 
-            elif result.control_signal == "stop":
+            elif node.control_signal == ControlSignal.STOP:
                 instance.status = WorkflowStatus.COMPLETED
                 issue_url = instance.state.github_issue_url or ""
                 if instance.slack_message_ts:
@@ -161,9 +164,8 @@ class WorkflowRuntime:
                 )
                 break
 
-            else:  # continue
-                node = graph.get(step_name)
-                next_step = result.next_step or (node.on_continue if node else None)
+            else:  # CONTINUE
+                next_step = node.on_continue
                 if not next_step:
                     logger.error(
                         "step | no next step defined for step=%s", step_name
@@ -173,21 +175,3 @@ class WorkflowRuntime:
                     break
                 instance.current_step = next_step
                 await self._repo.save(instance)
-
-    def _build_step(self, step_name: str, subcommand: str, instance: WorkflowInstance):
-        """step 이름에 해당하는 step 인스턴스를 반환한다."""
-        if step_name == "find_relevant_bc":
-            return FindRelevantBcStep()
-        if step_name == "generate_issue_draft":
-            return GenerateIssueDraftStep(subcommand)
-        if step_name == "wait_confirmation":
-            return WaitConfirmationStep(
-                subcommand=subcommand,
-                workflow_id=instance.workflow_id,
-                user_id=instance.slack_user_id,
-            )
-        if step_name == "regenerate_issue_draft":
-            return RegenerateIssueDraftStep(subcommand)
-        if step_name == "create_github_issue":
-            return CreateGithubIssueStep(subcommand)
-        raise ValueError(f"Unknown step name: {step_name}")

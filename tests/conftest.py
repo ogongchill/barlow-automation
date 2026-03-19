@@ -30,7 +30,7 @@ from src.agent.usage import AgentUsage  # noqa: E402
 from src.domain.feat.models.state import FeatIssueWorkflowState  # noqa: E402
 from src.domain.common.models.workflow_instance import WorkflowInstance  # noqa: E402
 from src.domain.common.models.lifecycle import WorkflowStatus  # noqa: E402
-from src.domain.common.models.step_result import StepResult  # noqa: E402
+from src.domain.common.models.step_result import ControlSignal  # noqa: E402
 
 
 @pytest.fixture()
@@ -130,5 +130,5 @@ def feat_workflow_instance(feat_workflow_state: FeatIssueWorkflowState) -> Workf
 
 
 @pytest.fixture()
-def success_step_result() -> StepResult:
-    return StepResult(status="success", control_signal="continue")
+def continue_signal() -> ControlSignal:
+    return ControlSignal.CONTINUE
