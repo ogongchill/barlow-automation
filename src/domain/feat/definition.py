@@ -150,6 +150,6 @@ RESUME_MAP: dict[str, str] = {
     "drop_restart": "regenerate_issue_draft",
     "reject_duplicate": "reject_end",
     "extend_existing": "generate_issue_draft",
-    "create_new_related": "generate_issue_draft",
+    "block_existing": "generate_issue_draft",
     "create_new_independent": "generate_issue_draft",
 }

@@ -276,7 +276,7 @@ def register(app: AsyncApp) -> None:
     _DECISION_ACTION_MAP = {
         "decision_reject_duplicate":     "reject_duplicate",
         "decision_extend_existing":      "extend_existing",
-        "decision_create_new_related":   "create_new_related",
+        "decision_block_existing":       "block_existing",
         "decision_create_new_independent": "create_new_independent",
     }
 

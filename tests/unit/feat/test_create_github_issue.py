@@ -27,7 +27,7 @@ def _make_input() -> CreateGithubIssueInput:
 async def test_execute_creates_issue_and_returns_url():
     respx.post("https://api.github.com/repos/owner/repo/issues").mock(
         return_value=httpx.Response(
-            201, json={"html_url": "https://github.com/owner/repo/issues/1"}
+            201, json={"html_url": "https://github.com/owner/repo/issues/1", "number": 1, "id": 101}
         )
     )
 

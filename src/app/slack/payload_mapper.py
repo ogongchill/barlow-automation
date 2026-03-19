@@ -256,28 +256,28 @@ def build_issue_decision_blocks(
     buttons: list[dict] = [
         {
             "type": "button",
-            "text": {"type": "plain_text", "text": "거절 (중복)"},
-            "style": "danger",
-            "action_id": "decision_reject_duplicate",
+            "text": {"type": "plain_text", "text": "새롭게 생성"},
+            "style": "primary",
+            "action_id": "decision_create_new_independent",
             "value": workflow_id,
         },
         {
             "type": "button",
-            "text": {"type": "plain_text", "text": "기존 이슈 확장"},
+            "text": {"type": "plain_text", "text": "Mark as Parent"},
             "action_id": "decision_extend_existing",
             "value": workflow_id,
         },
         {
             "type": "button",
-            "text": {"type": "plain_text", "text": "관련 이슈로 생성"},
-            "action_id": "decision_create_new_related",
+            "text": {"type": "plain_text", "text": "Block 앵커이슈"},
+            "action_id": "decision_block_existing",
             "value": workflow_id,
         },
         {
             "type": "button",
-            "text": {"type": "plain_text", "text": "독립 이슈로 생성"},
-            "style": "primary",
-            "action_id": "decision_create_new_independent",
+            "text": {"type": "plain_text", "text": "생성 취소"},
+            "style": "danger",
+            "action_id": "decision_reject_duplicate",
             "value": workflow_id,
         },
     ]
