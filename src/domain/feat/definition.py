@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from src.domain.common.models.step_result import ControlSignal
+from src.domain.feat.agents.relevant_issue_finder.schema import RelevantIssue
+from src.domain.feat.models.issue import FeatTemplate
+from src.domain.feat.models.issue_decision import Decision
 from src.domain.feat.steps.create_github_issue import (
     CreateGithubIssueInput,
     CreateGithubIssueStep,
@@ -64,16 +67,14 @@ GRAPH: dict[str, StepNode] = {
             user_message=inst.state.user_message,
             bc_candidates=inst.state.bc_candidates,
         ),
-        apply_output=lambda s, o: setattr(
-            s, "relevant_issues", o.relevant_issues
-        ),
+        apply_output=lambda s, o: setattr(s, "relevant_issues", o.relevant_issues.model_dump_json()),
         on_continue="wait_issue_decision",
     ),
     "wait_issue_decision": StepNode(
         step=WaitIssueDecisionStep(),
         control_signal=ControlSignal.WAIT_FOR_USER,
         extract_input=lambda inst: WaitIssueDecisionInput(
-            relevant_issues=inst.state.relevant_issues,
+            relevant_issues=RelevantIssue.model_validate_json(inst.state.relevant_issues),
             workflow_id=inst.workflow_id,
             user_id=inst.slack_user_id,
         ),
@@ -84,7 +85,10 @@ GRAPH: dict[str, StepNode] = {
         step=RejectEndStep(),
         control_signal=ControlSignal.STOP,
         extract_input=lambda inst: RejectEndInput(
-            relevant_issues=inst.state.relevant_issues,
+            relevant_issues=(
+                RelevantIssue.model_validate_json(inst.state.relevant_issues)
+                if inst.state.relevant_issues else None
+            ),
         ),
         apply_output=lambda s, o: setattr(
             s, "completion_message", o.completion_message
@@ -104,7 +108,7 @@ GRAPH: dict[str, StepNode] = {
         step=WaitConfirmationStep(),
         control_signal=ControlSignal.WAIT_FOR_USER,
         extract_input=lambda inst: WaitConfirmationInput(
-            issue_draft=inst.state.issue_draft,
+            issue_draft=FeatTemplate.model_validate_json(inst.state.issue_draft),
             workflow_id=inst.workflow_id,
             user_id=inst.slack_user_id,
         ),
@@ -128,7 +132,10 @@ GRAPH: dict[str, StepNode] = {
         extract_input=lambda inst: CreateGithubIssueInput(
             issue_draft=inst.state.issue_draft,
             issue_decision=inst.state.issue_decision,
-            relevant_issues=inst.state.relevant_issues,
+            relevant_issues=(
+                RelevantIssue.model_validate_json(inst.state.relevant_issues)
+                if inst.state.relevant_issues else None
+            ),
         ),
         apply_output=lambda s, o: setattr(
             s, "github_issue_url", o.github_issue_url

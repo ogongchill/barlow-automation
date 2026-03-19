@@ -1,13 +1,14 @@
 """create_github_issue -- GitHub REST API issue creation."""
 
-import json
 import logging
 from dataclasses import dataclass
 
 import httpx
 
 from src.config import config
+from src.domain.feat.agents.relevant_issue_finder.schema import RelevantIssue
 from src.domain.feat.models.issue import FeatTemplate
+from src.domain.feat.models.issue_decision import Decision
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +18,8 @@ GITHUB_API_URL = "https://api.github.com"
 @dataclass(frozen=True)
 class CreateGithubIssueInput:
     issue_draft: str
-    issue_decision: str | None = None
-    relevant_issues: str | None = None
+    issue_decision: Decision | None = None
+    relevant_issues: RelevantIssue | None = None
 
 
 @dataclass(frozen=True)
@@ -41,19 +42,15 @@ class CreateGithubIssueStep:
         if not input.issue_decision or not input.relevant_issues:
             return payload
 
-        try:
-            ri = json.loads(input.relevant_issues)
-            anchor = ri.get("anchor") or {}
-            anchor_no = anchor.get("issue_no")
-        except (json.JSONDecodeError, AttributeError):
-            return payload
+        anchor = input.relevant_issues.anchor
+        anchor_no = anchor.issue_no if anchor else None
 
         body: str = payload.get("body", "")
 
-        if input.issue_decision == "extend_existing" and anchor_no:
+        if input.issue_decision == Decision.EXTEND_EXISTING and anchor_no:
             body = f"Extends #{anchor_no}\n\n{body}"
             payload["labels"] = payload.get("labels", []) + ["extends"]
-        elif input.issue_decision == "create_new_related" and anchor_no:
+        elif input.issue_decision == Decision.CREATE_NEW_RELATED and anchor_no:
             body = f"Related to #{anchor_no}\n\n{body}"
 
         payload["body"] = body

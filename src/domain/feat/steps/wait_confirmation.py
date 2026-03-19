@@ -7,7 +7,7 @@ from src.domain.feat.models.issue import FeatTemplate
 
 @dataclass(frozen=True)
 class WaitConfirmationInput:
-    issue_draft: str
+    issue_draft: FeatTemplate
     workflow_id: str
     user_id: str
 
@@ -24,10 +24,9 @@ class WaitConfirmationStep:
     ) -> WaitConfirmationOutput:
         from src.app.slack.payload_mapper import build_issue_blocks
 
-        template = FeatTemplate.model_validate_json(input.issue_draft)
         blocks = build_issue_blocks(
             user=input.user_id,
-            template=template,
+            template=input.issue_draft,
             usage_text="",
             workflow_id=input.workflow_id,
         )

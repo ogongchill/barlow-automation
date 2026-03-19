@@ -12,6 +12,7 @@ from src.domain.common.models.workflow_instance import (
     WorkflowInstance,
 )
 from src.domain.common.ports.active_session import IActiveSessionRepository
+from src.domain.feat.models.issue_decision import Decision
 
 import src.domain.feat.definition as _feat_def
 import src.domain.refactor.definition as _refactor_def
@@ -111,7 +112,10 @@ class WorkflowRuntime:
             logger.warning("resume | unknown action=%s", action)
             return instance
 
-        instance.state.apply_patch({"issue_decision": action})
+        try:
+            instance.state.apply_patch({"issue_decision": Decision(action)})
+        except ValueError:
+            pass  # accept, reject, drop_restart 등 Decision이 아닌 액션
         instance.current_step = next_step
         instance.status = WorkflowStatus.RUNNING
         instance.pending_action_token = None

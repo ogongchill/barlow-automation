@@ -2,10 +2,12 @@
 
 from dataclasses import dataclass
 
+from src.domain.feat.agents.relevant_issue_finder.schema import RelevantIssue
+
 
 @dataclass(frozen=True)
 class WaitIssueDecisionInput:
-    relevant_issues: str  # JSON
+    relevant_issues: RelevantIssue
     workflow_id: str
     user_id: str
 
@@ -24,7 +26,7 @@ class WaitIssueDecisionStep:
 
         blocks = build_issue_decision_blocks(
             user=input.user_id,
-            relevant_issues_json=input.relevant_issues,
+            relevant_issues=input.relevant_issues,
             workflow_id=input.workflow_id,
         )
         return WaitIssueDecisionOutput(blocks=blocks)

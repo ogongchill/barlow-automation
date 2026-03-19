@@ -4,6 +4,7 @@ import json
 from functools import singledispatch
 
 from src.domain.common.models.issue_base import BaseIssueTemplate
+from src.domain.feat.agents.relevant_issue_finder.schema import RelevantIssue
 from src.domain.feat.models.issue import FeatTemplate
 from src.domain.refactor.models.issue import RefactorTemplate
 from src.domain.fix.models.issue import FixTemplate
@@ -220,40 +221,33 @@ def build_bc_decision_blocks(user: str | None, bc_decision_json: str, usage_text
 
 def build_issue_decision_blocks(
     user: str | None,
-    relevant_issues_json: str,
+    relevant_issues: RelevantIssue,
     workflow_id: str,
 ) -> list[dict]:
     """relevant issue 분석 결과를 사용자 결정 버튼과 함께 Block Kit으로 반환한다."""
-    import json as _json
-
-    try:
-        ri = _json.loads(relevant_issues_json)
-    except Exception:
-        ri = {}
-
-    state = ri.get("state", "new")
-    anchor = ri.get("anchor") or {}
-    related = ri.get("related_issues") or []
+    state = relevant_issues.state.value
+    anchor = relevant_issues.anchor
+    related = relevant_issues.related_issues
 
     state_labels = {
-        "duplicated": "⚠️ 중복 이슈가 존재합니다",
-        "exists_related": "🔗 관련 이슈가 존재합니다",
-        "new": "✅ 신규 이슈입니다",
+        "duplicated": "\u26a0\ufe0f 중복 이슈가 존재합니다",
+        "exists_related": "\U0001f517 관련 이슈가 존재합니다",
+        "new": "\u2705 신규 이슈입니다",
     }
     mention = f"<@{user}>\n" if user else ""
     lines = [f"{mention}*{state_labels.get(state, state)}*"]
 
-    if anchor.get("issue_no"):
-        reasons = "\n".join(f"  - {r}" for r in anchor.get("reason", []))
+    if anchor and anchor.issue_no:
+        reasons = "\n".join(f"  - {r}" for r in anchor.reason)
         lines.append(
-            f"*앵커 이슈*: <{anchor['issue_url']}|{anchor['issue_no']}> "
-            f"(신뢰도: {anchor.get('confidence', 0):.0%})"
+            f"*앵커 이슈*: <{anchor.issue_url}|{anchor.issue_no}> "
+            f"(신뢰도: {anchor.confidence:.0%})"
             + (f"\n{reasons}" if reasons else "")
         )
 
     if related:
         rel_text = ", ".join(
-            f"#{r['issue_no']} ({r.get('confidence', 0):.0%})" for r in related
+            f"#{r.issue_no} ({r.confidence:.0%})" for r in related
         )
         lines.append(f"*관련 이슈*: {rel_text}")
 

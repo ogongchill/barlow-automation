@@ -2,10 +2,12 @@
 
 from dataclasses import dataclass
 
+from src.domain.feat.agents.relevant_issue_finder.schema import RelevantIssue
+
 
 @dataclass(frozen=True)
 class RejectEndInput:
-    relevant_issues: str | None
+    relevant_issues: RelevantIssue | None
 
 
 @dataclass(frozen=True)

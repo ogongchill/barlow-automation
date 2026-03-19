@@ -137,57 +137,80 @@ def register(app: AsyncApp) -> None:
     # ── Modal 제출 → 큐 pipeline_start ──────────────────────────────────────
 
     @app.view(FeatModalInput.CALLBACK_ID)
-    async def handle_feat_submit(ack, body, view):
+    async def handle_feat_submit(ack, client, body, view):
         await ack()
         meta = json.loads(view.get("private_metadata") or "{}")
+        channel_id = meta.get("channel_id", "")
         _put_sqs({
             "type": "pipeline_start",
             "subcommand": "feat",
             "user_id": body["user"]["id"],
-            "channel_id": meta.get("channel_id", ""),
+            "channel_id": channel_id,
             "user_message": FeatModalInput.from_view(view["state"]["values"]).to_prompt(),
             "dedup_id": body["view"]["id"],
         })
+        if channel_id:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text="요청을 수신했습니다. 분석을 시작합니다... ⏳",
+            )
 
     @app.view(RefactorModalInput.CALLBACK_ID)
-    async def handle_refactor_submit(ack, body, view):
+    async def handle_refactor_submit(ack, client, body, view):
         await ack()
         meta = json.loads(view.get("private_metadata") or "{}")
+        channel_id = meta.get("channel_id", "")
         _put_sqs({
             "type": "pipeline_start",
             "subcommand": "refactor",
             "user_id": body["user"]["id"],
-            "channel_id": meta.get("channel_id", ""),
+            "channel_id": channel_id,
             "user_message": RefactorModalInput.from_view(view["state"]["values"]).to_prompt(),
             "dedup_id": body["view"]["id"],
         })
+        if channel_id:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text="요청을 수신했습니다. 분석을 시작합니다... ⏳",
+            )
 
     @app.view(FixModalInput.CALLBACK_ID)
-    async def handle_fix_submit(ack, body, view):
+    async def handle_fix_submit(ack, client, body, view):
         await ack()
         meta = json.loads(view.get("private_metadata") or "{}")
+        channel_id = meta.get("channel_id", "")
         _put_sqs({
             "type": "pipeline_start",
             "subcommand": "fix",
             "user_id": body["user"]["id"],
-            "channel_id": meta.get("channel_id", ""),
+            "channel_id": channel_id,
             "user_message": FixModalInput.from_view(view["state"]["values"]).to_prompt(),
             "dedup_id": body["view"]["id"],
         })
+        if channel_id:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text="요청을 수신했습니다. 분석을 시작합니다... ⏳",
+            )
 
     # ── Block Actions ────────────────────────────────────────────────────────
 
     @app.action("issue_accept")
-    async def handle_accept(ack, body):
+    async def handle_accept(ack, client, body):
         await ack()
         workflow_id = (body["actions"][0].get("value") or "").strip()
+        channel_id = body["channel"]["id"]
         _put_sqs({
             "type": "accept",
             "workflow_id": workflow_id,
             "user_id": body["user"]["id"],
-            "channel_id": body["channel"]["id"],
+            "channel_id": channel_id,
             "dedup_id": body["actions"][0]["action_ts"],
         })
+        await client.chat_postMessage(
+            channel=channel_id,
+            text="요청을 수신했습니다. 이슈를 생성합니다... ⏳",
+        )
 
     @app.action("issue_reject")
     async def handle_reject(ack, client, body):
@@ -203,9 +226,10 @@ def register(app: AsyncApp) -> None:
         )
 
     @app.view("reject_submit")
-    async def handle_reject_submit(ack, body, view):
+    async def handle_reject_submit(ack, client, body, view):
         await ack()
         meta = json.loads(view.get("private_metadata") or "{}")
+        channel_id = meta["channel_id"]
         additional = (
             view["state"]["values"]
             .get("additional_requirements", {})
@@ -216,10 +240,14 @@ def register(app: AsyncApp) -> None:
             "type": "reject",
             "workflow_id": meta.get("workflow_id", ""),
             "user_id": meta["user_id"],
-            "channel_id": meta["channel_id"],
+            "channel_id": channel_id,
             "additional_requirements": additional,
             "dedup_id": body["view"]["id"],
         })
+        await client.chat_postMessage(
+            channel=channel_id,
+            text="요청을 수신했습니다. 이슈를 재생성합니다... ⏳",
+        )
 
     @app.action("issue_drop")
     async def handle_drop(ack, client, body):
@@ -255,16 +283,21 @@ def register(app: AsyncApp) -> None:
     for _action_id, _event_type in _DECISION_ACTION_MAP.items():
 
         def _make_decision_handler(event_type: str):
-            async def _handler(ack, body):
+            async def _handler(ack, client, body):
                 await ack()
                 workflow_id = (body["actions"][0].get("value") or "").strip()
+                channel_id = body["channel"]["id"]
                 _put_sqs({
                     "type": event_type,
                     "workflow_id": workflow_id,
                     "user_id": body["user"]["id"],
-                    "channel_id": body["channel"]["id"],
+                    "channel_id": channel_id,
                     "dedup_id": body["actions"][0]["action_ts"],
                 })
+                await client.chat_postMessage(
+                    channel=channel_id,
+                    text="요청을 수신했습니다. 처리 중입니다... ⏳",
+                )
             return _handler
 
         app.action(_action_id)(_make_decision_handler(_event_type))

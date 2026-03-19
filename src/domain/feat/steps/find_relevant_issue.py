@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from src.domain.feat.agents.relevant_issue_finder.schema import RelevantIssue
 from src.domain.feat.executor import FeatAgentExecutor, FeatAgentKey
 
 
@@ -13,7 +14,7 @@ class FindRelevantIssueInput:
 
 @dataclass(frozen=True)
 class FindRelevantIssueOutput:
-    relevant_issues: str  # JSON string of RelevantIssue
+    relevant_issues: RelevantIssue
     internal_trace: dict | None = None
 
 
@@ -29,13 +30,13 @@ class FindRelevantIssueStep:
         if input.bc_candidates:
             prompt = f"[BC Context]\n{input.bc_candidates}\n\n{input.user_message}"
         result = await agent.run(prompt)
-        relevant_issues_json = (
-            result.typed_output.model_dump_json()
+        relevant_issues = (
+            result.typed_output
             if result.typed_output
-            else result.output
+            else RelevantIssue.model_validate_json(result.output)
         )
         return FindRelevantIssueOutput(
-            relevant_issues=relevant_issues_json,
+            relevant_issues=relevant_issues,
             internal_trace={
                 "input_tokens": result.usage.input_tokens,
                 "output_tokens": result.usage.output_tokens,

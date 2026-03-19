@@ -1,19 +1,13 @@
 """feat 이슈 템플릿 -- FeatTemplate + to_github_body()."""
 
-from enum import Enum
+from src.domain.common.models.issue_base import BaseIssueTemplate, IssueType, Label
 
-from src.domain.common.models.issue_base import BaseIssueTemplate, Label
+# IssueType은 common에서 관리 — 이 모듈에서 re-export하여 하위 호환 유지
+__all__ = ["FeatTemplate", "IssueType"]
 
 
 def _bullet(items: list[str]) -> str:
     return "\n".join(f"- {item}" for item in items)
-
-
-class IssueType(str, Enum):
-
-    FEAT = "Feature"
-    REFACTOR = "Refactor"
-    FIX = "Fix"
 
 
 class FeatTemplate(BaseIssueTemplate):
@@ -26,6 +20,10 @@ class FeatTemplate(BaseIssueTemplate):
     def label(self) -> Label:
         return Label.FEAT
 
+    @property
+    def issue_type(self) -> IssueType:
+        return IssueType.FEAT
+
     def to_github_body(self) -> str:
         parts = [
             f"## 개요\n{self.about}",
@@ -37,4 +35,9 @@ class FeatTemplate(BaseIssueTemplate):
         return "\n\n".join(p for p in parts if p is not None)
 
     def to_github_payload(self) -> dict:
-        return {"title": self.issue_title, "body": self.to_github_body(), "labels": [self.label.value]}
+        return {
+            "title": self.issue_title,
+            "body": self.to_github_body(),
+            "labels": [self.label.value],
+            "type": self.issue_type.value,
+        }

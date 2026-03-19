@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel
 
-from src.domain.common.models.issue_base import BaseIssueTemplate, Label
+from src.domain.common.models.issue_base import BaseIssueTemplate, IssueType, Label
 
 
 def _bullet(items: list[str]) -> str:
@@ -23,6 +23,10 @@ class RefactorTemplate(BaseIssueTemplate):
     def label(self) -> Label:
         return Label.REFACTOR
 
+    @property
+    def issue_type(self) -> IssueType:
+        return IssueType.REFACTOR
+
     def to_github_body(self) -> str:
         goals_md = ""
         for goal in self.goals:
@@ -35,4 +39,9 @@ class RefactorTemplate(BaseIssueTemplate):
         )
 
     def to_github_payload(self) -> dict:
-        return {"title": self.issue_title, "body": self.to_github_body(), "labels": [self.label.value]}
+        return {
+            "title": self.issue_title,
+            "body": self.to_github_body(),
+            "labels": [self.label.value],
+            "type": self.issue_type.value,
+        }

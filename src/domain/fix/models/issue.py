@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel
 
-from src.domain.common.models.issue_base import BaseIssueTemplate, Label
+from src.domain.common.models.issue_base import BaseIssueTemplate, IssueType, Label
 
 
 def _bullet(items: list[str]) -> str:
@@ -28,6 +28,10 @@ class FixTemplate(BaseIssueTemplate):
     def label(self) -> Label:
         return Label.FIX
 
+    @property
+    def issue_type(self) -> IssueType:
+        return IssueType.FIX
+
     def to_github_body(self) -> str:
         problems_md = "\n".join(
             f"- **{p.issue}** -> {p.suggestion}" for p in self.problems
@@ -42,4 +46,9 @@ class FixTemplate(BaseIssueTemplate):
         )
 
     def to_github_payload(self) -> dict:
-        return {"title": self.issue_title, "body": self.to_github_body(), "labels": [self.label.value]}
+        return {
+            "title": self.issue_title,
+            "body": self.to_github_body(),
+            "labels": [self.label.value],
+            "type": self.issue_type.value,
+        }
