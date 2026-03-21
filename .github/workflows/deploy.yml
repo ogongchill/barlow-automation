@@ -31,7 +31,10 @@ jobs:
       - name: Build package
         run: |
           mkdir -p dist/package
-          pip install -r requirements-deploy.txt -t dist/package/ --quiet
+          pip install -r requirements-deploy.txt -t dist/package/ \
+            --platform manylinux2014_aarch64 \
+            --only-binary=:all: \
+            --quiet
           cp -r src dist/package/
           cd dist/package && zip -r ../lambda.zip . -q
 
