@@ -6,6 +6,7 @@ on:
     paths:
       - 'src/**'
       - 'requirements-deploy.txt'
+  workflow_dispatch:
 
 permissions:
   id-token: write
