@@ -83,7 +83,15 @@
       "Bash(sed -i 's|from src.domain.issue_templates import FeatTemplate|from src.domain.feat.models.issue import FeatTemplate|g' /c/Users/yongs/Desktop/projects/barlow-automation/tests/unit/controller/test_reply.py)",
       "Bash(cd /tmp)",
       "Bash(zip -r lambda-deps.zip lambda-deps -x \"*/win32*\" -x \"*/pythonwin*\" -x \"*/win32com*\" -x \"*/PyWin32*\" -x \"*__pycache__*\" -x \"*.pyc\" -q)",
-      "Bash(grep -n \"control_signal\\\\|\"\"continue\"\"\\\\|\"\"wait_for_user\"\"\\\\|\"\"stop\"\"\\\\|\"\"success\"\"\\\\|\"\"waiting\"\"\\\\|\"\"failed\"\"\" /c/Users/yongs/Desktop/projects/barlow-automation/src/domain/feat/steps/*.py /c/Users/yongs/Desktop/projects/barlow-automation/src/app/workflow_runtime.py)"
+      "Bash(grep -n \"control_signal\\\\|\"\"continue\"\"\\\\|\"\"wait_for_user\"\"\\\\|\"\"stop\"\"\\\\|\"\"success\"\"\\\\|\"\"waiting\"\"\\\\|\"\"failed\"\"\" /c/Users/yongs/Desktop/projects/barlow-automation/src/domain/feat/steps/*.py /c/Users/yongs/Desktop/projects/barlow-automation/src/app/workflow_runtime.py)",
+      "Bash(git rm:*)",
+      "Bash(python -m pytest tests/integration/test_step_worker_handler.py -v)",
+      "Bash(python -m pytest --tb=short -q)",
+      "WebFetch(domain:docs.github.com)",
+      "Bash(git -C \"/c/Users/yongs/Desktop/projects/barlow-automation\" add src/app/handlers/step_worker_handler.py src/app/slack/payload_mapper.py src/controller/handler/slash.py src/domain/feat/definition.py src/domain/feat/models/issue_decision.py src/domain/feat/steps/create_github_issue.py src/domain/feat/models/issue.py tests/unit/feat/test_create_github_issue.py)",
+      "Bash(git -C:*)",
+      "Bash(find /c/Users/yongs/Desktop/projects/barlow-automation -maxdepth 2 -type f \\\\\\(-name serverless.* -o -name *.tf -o -name *.yaml -o -name *.yml -o -name aws-*.json -o -name template* \\\\\\))",
+      "Bash(grep -E \"\\\\.py$\")"
     ]
   }
 }
