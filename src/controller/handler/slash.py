@@ -1,0 +1,303 @@
+"""슬래시 커맨드 / Modal 제출 / Block Action 핸들러 — ack 후 큐 전달."""
+
+import json
+import logging
+
+from slack_bolt.async_app import AsyncApp
+
+from src.controller.modal_templates.feat_modal_input import FeatModalInput
+from src.controller.modal_templates.fix_modal_input import FixModalInput
+from src.controller.modal_templates.refactor_modal_input import (
+    RefactorModalInput,
+)
+from src.domain.common.models.lifecycle import WorkflowStatus
+from src.domain.common.models.workflow_instance import (
+    IWorkflowInstanceRepository,
+)
+from src.domain.common.ports.active_session import IActiveSessionRepository
+from src.domain.queue import IQueueSender
+from src.app.slack.payload_mapper import build_reject_modal
+
+logger = logging.getLogger(__name__)
+
+_workflow_repo: IWorkflowInstanceRepository | None = None
+_active_session_repo: IActiveSessionRepository | None = None
+_queue: IQueueSender | None = None
+
+
+def configure(
+    workflow_repo: IWorkflowInstanceRepository,
+    active_session_repo: IActiveSessionRepository,
+    queue: IQueueSender,
+) -> None:
+    """진입점(Lambda / 로컬 서버)에서 의존성을 주입한다."""
+    global _workflow_repo, _active_session_repo, _queue
+    _workflow_repo = workflow_repo
+    _active_session_repo = active_session_repo
+    _queue = queue
+
+
+def _put_sqs(message: dict) -> None:
+    assert _queue is not None, "slash.configure() 가 호출되지 않았습니다"
+    _queue.send(message)
+
+
+def _modal_view(
+    callback_id: str,
+    title: str,
+    blocks: list[dict],
+    private_metadata: str = "",
+) -> dict:
+    return {
+        "type": "modal",
+        "callback_id": callback_id,
+        "private_metadata": private_metadata,
+        "title": {"type": "plain_text", "text": title},
+        "submit": {"type": "plain_text", "text": "제출"},
+        "close": {"type": "plain_text", "text": "취소"},
+        "blocks": blocks,
+    }
+
+
+def register(app: AsyncApp) -> None:
+
+    # ── /drop — 현재 워크플로우 즉시 중단 ────────────────────────────────────
+
+    @app.command("/drop")
+    async def handle_drop_workflow(ack, client, command):
+        await ack()
+        assert _active_session_repo is not None, "slash.configure() 미호출"
+        channel_id = command["channel_id"]
+        user_id = command["user_id"]
+        workflow_id = await _active_session_repo.get_workflow_id(
+            channel_id, user_id
+        )
+        if not workflow_id:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text="진행 중인 워크플로우가 없습니다.",
+            )
+            return
+
+        assert _workflow_repo is not None, "slash.configure() 미호출"
+        instance = await _workflow_repo.get(workflow_id)
+        if instance:
+            instance.status = WorkflowStatus.CANCELLED
+            await _workflow_repo.save(instance)
+        await _active_session_repo.clear(channel_id, user_id)
+        await client.chat_postMessage(
+            channel=channel_id,
+            text="워크플로우가 중단되었습니다.",
+        )
+        logger.info(
+            "drop | cancelled workflow_id=%s user=%s", workflow_id, user_id
+        )
+
+    # ── 슬래시 커맨드 → Modal 열기 ──────────────────────────────────────────
+
+    @app.command("/feat")
+    async def handle_feat(ack, client, command):
+        await ack()
+        await client.views_open(
+            trigger_id=command["trigger_id"],
+            view=_modal_view(
+                FeatModalInput.CALLBACK_ID,
+                "기능 요청",
+                FeatModalInput.modal_blocks(),
+                private_metadata=json.dumps({"channel_id": command["channel_id"]}),
+            ),
+        )
+
+    @app.command("/refactor")
+    async def handle_refactor(ack, client, command):
+        await ack()
+        await client.views_open(
+            trigger_id=command["trigger_id"],
+            view=_modal_view(
+                RefactorModalInput.CALLBACK_ID,
+                "리팩토링 요청",
+                RefactorModalInput.modal_blocks(),
+                private_metadata=json.dumps({"channel_id": command["channel_id"]}),
+            ),
+        )
+
+    @app.command("/fix")
+    async def handle_fix(ack, client, command):
+        await ack()
+        await client.views_open(
+            trigger_id=command["trigger_id"],
+            view=_modal_view(
+                FixModalInput.CALLBACK_ID,
+                "버그 수정 요청",
+                FixModalInput.modal_blocks(),
+                private_metadata=json.dumps({"channel_id": command["channel_id"]}),
+            ),
+        )
+
+    # ── Modal 제출 → 큐 pipeline_start ──────────────────────────────────────
+
+    @app.view(FeatModalInput.CALLBACK_ID)
+    async def handle_feat_submit(ack, client, body, view):
+        await ack()
+        meta = json.loads(view.get("private_metadata") or "{}")
+        channel_id = meta.get("channel_id", "")
+        _put_sqs({
+            "type": "pipeline_start",
+            "subcommand": "feat",
+            "user_id": body["user"]["id"],
+            "channel_id": channel_id,
+            "user_message": FeatModalInput.from_view(view["state"]["values"]).to_prompt(),
+            "dedup_id": body["view"]["id"],
+        })
+        if channel_id:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text="요청을 수신했습니다. 분석을 시작합니다... ⏳",
+            )
+
+    @app.view(RefactorModalInput.CALLBACK_ID)
+    async def handle_refactor_submit(ack, client, body, view):
+        await ack()
+        meta = json.loads(view.get("private_metadata") or "{}")
+        channel_id = meta.get("channel_id", "")
+        _put_sqs({
+            "type": "pipeline_start",
+            "subcommand": "refactor",
+            "user_id": body["user"]["id"],
+            "channel_id": channel_id,
+            "user_message": RefactorModalInput.from_view(view["state"]["values"]).to_prompt(),
+            "dedup_id": body["view"]["id"],
+        })
+        if channel_id:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text="요청을 수신했습니다. 분석을 시작합니다... ⏳",
+            )
+
+    @app.view(FixModalInput.CALLBACK_ID)
+    async def handle_fix_submit(ack, client, body, view):
+        await ack()
+        meta = json.loads(view.get("private_metadata") or "{}")
+        channel_id = meta.get("channel_id", "")
+        _put_sqs({
+            "type": "pipeline_start",
+            "subcommand": "fix",
+            "user_id": body["user"]["id"],
+            "channel_id": channel_id,
+            "user_message": FixModalInput.from_view(view["state"]["values"]).to_prompt(),
+            "dedup_id": body["view"]["id"],
+        })
+        if channel_id:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text="요청을 수신했습니다. 분석을 시작합니다... ⏳",
+            )
+
+    # ── Block Actions ────────────────────────────────────────────────────────
+
+    @app.action("issue_accept")
+    async def handle_accept(ack, client, body):
+        await ack()
+        workflow_id = (body["actions"][0].get("value") or "").strip()
+        channel_id = body["channel"]["id"]
+        _put_sqs({
+            "type": "accept",
+            "workflow_id": workflow_id,
+            "user_id": body["user"]["id"],
+            "channel_id": channel_id,
+            "dedup_id": body["actions"][0]["action_ts"],
+        })
+        await client.chat_postMessage(
+            channel=channel_id,
+            text="요청을 수신했습니다. 이슈를 생성합니다... ⏳",
+        )
+
+    @app.action("issue_reject")
+    async def handle_reject(ack, client, body):
+        await ack()
+        workflow_id = (body["actions"][0].get("value") or "").strip()
+        await client.views_open(
+            trigger_id=body["trigger_id"],
+            view=build_reject_modal(
+                workflow_id=workflow_id,
+                channel_id=body["channel"]["id"],
+                user_id=body["user"]["id"],
+            ),
+        )
+
+    @app.view("reject_submit")
+    async def handle_reject_submit(ack, client, body, view):
+        await ack()
+        meta = json.loads(view.get("private_metadata") or "{}")
+        channel_id = meta["channel_id"]
+        additional = (
+            view["state"]["values"]
+            .get("additional_requirements", {})
+            .get("input", {})
+            .get("value") or None
+        )
+        _put_sqs({
+            "type": "reject",
+            "workflow_id": meta.get("workflow_id", ""),
+            "user_id": meta["user_id"],
+            "channel_id": channel_id,
+            "additional_requirements": additional,
+            "dedup_id": body["view"]["id"],
+        })
+        await client.chat_postMessage(
+            channel=channel_id,
+            text="요청을 수신했습니다. 이슈를 재생성합니다... ⏳",
+        )
+
+    @app.action("issue_drop")
+    async def handle_drop(ack, client, body):
+        await ack()
+        assert _active_session_repo is not None, "slash.configure() 미호출"
+        assert _workflow_repo is not None, "slash.configure() 미호출"
+        workflow_id = (body["actions"][0].get("value") or "").strip()
+        channel_id = body["channel"]["id"]
+        user_id = body["user"]["id"]
+
+        instance = await _workflow_repo.get(workflow_id)
+        if instance:
+            instance.status = WorkflowStatus.CANCELLED
+            await _workflow_repo.save(instance)
+        await _active_session_repo.clear(channel_id, user_id)
+        await client.chat_postMessage(
+            channel=channel_id,
+            text="워크플로우가 중단되었습니다.",
+        )
+        logger.info(
+            "drop | cancelled workflow_id=%s user=%s", workflow_id, user_id
+        )
+
+    # ── Issue Decision Actions ────────────────────────────────────────────────
+
+    _DECISION_ACTION_MAP = {
+        "decision_reject_duplicate":     "reject_duplicate",
+        "decision_extend_existing":      "extend_existing",
+        "decision_block_existing":       "block_existing",
+        "decision_create_new_independent": "create_new_independent",
+    }
+
+    for _action_id, _event_type in _DECISION_ACTION_MAP.items():
+
+        def _make_decision_handler(event_type: str):
+            async def _handler(ack, client, body):
+                await ack()
+                workflow_id = (body["actions"][0].get("value") or "").strip()
+                channel_id = body["channel"]["id"]
+                _put_sqs({
+                    "type": event_type,
+                    "workflow_id": workflow_id,
+                    "user_id": body["user"]["id"],
+                    "channel_id": channel_id,
+                    "dedup_id": body["actions"][0]["action_ts"],
+                })
+                await client.chat_postMessage(
+                    channel=channel_id,
+                    text="요청을 수신했습니다. 처리 중입니다... ⏳",
+                )
+            return _handler
+
+        app.action(_action_id)(_make_decision_handler(_event_type))

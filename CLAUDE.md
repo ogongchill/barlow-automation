@@ -31,44 +31,18 @@ Slack 기반 AI 티켓 자동화 시스템.
 ## 프로젝트 구조 (목표)
 
 ```
-src/
+📁 src
 ├── config.py              # 환경 변수 기반 설정
 ├── logging_config.py      # 로깅 초기화
 ├── main.py                # 진입점
-│
-├── slack/                 # 1. Slack 통신 모듈
-│   ├── app.py             # AsyncApp 팩토리
-│   ├── event_router.py    # 이벤트 분기 (Router)
-│   └── handlers/
-│       ├── mention_handler.py
-│       ├── slash_handler.py
-│       └── message_handler.py
-│
-├── session/               # 2. 세션 관리 모듈
-│   ├── manager.py         # SessionManager
-│   └── models.py          # Session 데이터 구조
-│
-├── agent/                 # 3. Agent 관리 모듈
-│   ├── base.py            # IAgent 인터페이스
-│   ├── usage.py           # 토큰/비용 추적
-│   ├── tools.py           # MCP 서버 빌더
-│   ├── agents/            # 역할별 Agent 팩토리
-│   │   └── github.py
-│   └── runner/            # LLM 제공자별 구현
-│       ├── models.py      # 모델 레지스트리
-│       ├── claude.py      # Claude Agent SDK
-│       └── openai.py      # OpenAI Agent SDK
-│
+├─ 📁 presentation
+├─ 📁 services
+├─ 📁 domain
+├─ 📁 agent
+├─ 📁 infra
 └── logging/               # 4. 로그 모듈
     ├── agent_logger.py    # Agent 전용 파일 로거
     └── models.py          # 로그 데이터 구조
 ```
 
 ---
-
-## 기술 스택
-- Python 3.12+
-- Slack Bolt (Socket Mode, Async)
-- Claude Agent SDK (`claude_agent_sdk`)
-- OpenAI Agent SDK
-- GitHub MCP (`@modelcontextprotocol/server-github`)

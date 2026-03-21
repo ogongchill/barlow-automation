@@ -1,0 +1,14 @@
+{
+  "type": "pipeline_start",
+  "subcommand": "fix",
+  "user_id": "U_LOCAL",
+  "channel_id": "C_LOCAL",
+  "modal_input": {
+    "bug_title": "GitHubMCPFactory 연결 실패 시 에러 무음 처리",
+    "symptom": "pipeline_start 처리 중 GitHubMCPFactory.connect()가 실패해도 에러 로그 없이 조용히 종료됨. Slack에 아무런 피드백이 오지 않음.",
+    "reproduction": "GitHub MCP 서버가 응답하지 않는 상태에서 /feat 커맨드 제출\nGITHUB_TOKEN이 만료된 상태에서 pipeline_start 실행",
+    "expected": "연결 실패 시 에러 로그가 남아야 한다\n사용자에게 Slack 에러 메시지가 전송되어야 한다",
+    "related_areas": "src/agent/mcp.py GitHubMCPFactory.connect()\nsrc/lambda_worker.py _process()"
+  },
+  "dedup_id": "local-fix-001"
+}

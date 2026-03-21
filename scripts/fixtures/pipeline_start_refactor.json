@@ -1,0 +1,14 @@
+{
+  "type": "pipeline_start",
+  "subcommand": "refactor",
+  "user_id": "U_LOCAL",
+  "channel_id": "C_LOCAL",
+  "modal_input": {
+    "target_name": "lambda_worker 핸들러 서비스 레이어 분리",
+    "background": "lambda_worker.py의 _handle_* 함수들이 비즈니스 로직을 직접 포함하고 있어 테스트와 유지보수가 어려움.",
+    "as_is": "_handle_pipeline_start가 read_planner, issue_generator 호출을 직접 수행함\n_handle_accept가 issue_creator 호출과 Slack 응답을 하나의 함수에서 처리함\n핸들러 함수가 서비스 오케스트레이션과 Slack 통신을 동시에 담당함",
+    "to_be": "각 핸들러는 서비스 함수 호출과 Slack 응답만 담당한다\n비즈니스 로직은 services/ 레이어로 완전히 분리한다\n핸들러는 서비스 결과를 받아 Slack 메시지로 변환하는 역할만 한다",
+    "constraints": "기존 SQS 메시지 포맷(type, subcommand 등)은 유지한다\nIPendingRepository 인터페이스는 변경하지 않는다"
+  },
+  "dedup_id": "local-refactor-001"
+}

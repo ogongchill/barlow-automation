@@ -1,0 +1,14 @@
+{
+  "type": "pipeline_start",
+  "subcommand": "feat",
+  "user_id": "U_LOCAL",
+  "channel_id": "C_LOCAL",
+  "modal_input": {
+    "feature_name": "국회의원 조회 기능 추가",
+    "background": "국회의원 관련 기능을 추가한다.",
+    "features":"국회의원 조회 기능을 추가한다\n국회의원을 즐겨찾기에 등록할 수 있다\n국회의원을 필터하여 검색할 수 있다\n",
+    "constraints": "MemberUser만 이 기능을 사용할 수 있다.",
+    "design_requirements": "core.domain에 lawmaker 디렉토리를 추가한다"
+  },
+  "dedup_id": "local-feat-001"
+}
