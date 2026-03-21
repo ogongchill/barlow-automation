@@ -13,7 +13,14 @@ from src.domain.common.ports.idempotency import IIdempotencyRepository
 
 logger = logging.getLogger(__name__)
 
-TABLE_NAME = os.environ.get("PENDING_ACTION_TABLE_NAME", "barlow-pending-action")
+def _require_env(key: str) -> str:
+    value = os.environ.get(key)
+    if not value:
+        raise EnvironmentError(f"Missing required environment variable: {key}")
+    return value
+
+
+TABLE_NAME = _require_env("PENDING_ACTION_TABLE_NAME")
 PENDING_ACTION_TTL_SECONDS = 60 * 60  # 1시간
 
 

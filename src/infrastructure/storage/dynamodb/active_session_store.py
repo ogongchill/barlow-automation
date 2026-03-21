@@ -12,7 +12,14 @@ from src.domain.common.ports.active_session import IActiveSessionRepository
 
 logger = logging.getLogger(__name__)
 
-TABLE_NAME = os.environ.get("ACTIVE_SESSION_TABLE_NAME", "barlow-active-session")
+def _require_env(key: str) -> str:
+    value = os.environ.get(key)
+    if not value:
+        raise EnvironmentError(f"Missing required environment variable: {key}")
+    return value
+
+
+TABLE_NAME = _require_env("ACTIVE_SESSION_TABLE_NAME")
 SESSION_TTL_SECONDS = 60 * 60 * 24  # 24시간
 
 

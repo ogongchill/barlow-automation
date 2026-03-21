@@ -11,7 +11,14 @@ from src.domain.common.models.workflow_instance import IWorkflowInstanceReposito
 
 logger = logging.getLogger(__name__)
 
-TABLE_NAME = os.environ.get("WORKFLOW_TABLE_NAME", "barlow-workflow")
+def _require_env(key: str) -> str:
+    value = os.environ.get(key)
+    if not value:
+        raise EnvironmentError(f"Missing required environment variable: {key}")
+    return value
+
+
+TABLE_NAME = _require_env("WORKFLOW_TABLE_NAME")
 
 
 async def _run(func, *args, **kwargs):
