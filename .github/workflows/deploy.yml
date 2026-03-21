@@ -11,6 +11,10 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  S3_BUCKET: barlow-deploy-bucket
+  S3_KEY: automation/lambda-${{ github.sha }}.zip
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -38,31 +42,30 @@ jobs:
 
       - name: Upload to S3
         run: |
-          aws s3 cp dist/lambda.zip \
-            s3://barlow-deploy-bucket/barlow/automation/lambda-${{ github.sha }}.zip
+          aws s3 cp dist/lambda.zip s3://${{ env.S3_BUCKET }}/${{ env.S3_KEY }}
 
       - name: Deploy Ack Lambda
         run: |
           aws lambda update-function-code \
             --function-name barlow-slack-ack \
-            --s3-bucket barlow-deploy-bucket \
-            --s3-key barlow/automation/lambda-${{ github.sha }}.zip
+            --s3-bucket ${{ env.S3_BUCKET }} \
+            --s3-key ${{ env.S3_KEY }}
 
       - name: Deploy Worker Lambda
         run: |
           aws lambda update-function-code \
             --function-name barlow-automation-worker \
-            --s3-bucket barlow-deploy-bucket \
-            --s3-key barlow/automation/lambda-${{ github.sha }}.zip
+            --s3-bucket ${{ env.S3_BUCKET }} \
+            --s3-key ${{ env.S3_KEY }}
 
       - name: Update Parameter Store
         run: |
           aws ssm put-parameter \
-            --name /barlow/deploy/current-key \
-            --value "barlow/automation/lambda-${{ github.sha }}.zip" \
+            --name /automation/deploy/current-key \
+            --value "${{ env.S3_KEY }}" \
             --type String --overwrite
 
           aws ssm put-parameter \
-            --name /barlow/deploy/current-sha \
+            --name /automation/deploy/current-sha \
             --value "${{ github.sha }}" \
             --type String --overwrite
