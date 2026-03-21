@@ -1,0 +1,67 @@
+name: Deploy Lambda
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'requirements-deploy.txt'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build package
+        run: |
+          mkdir -p dist/package
+          pip install -r requirements-deploy.txt -t dist/package/ --quiet
+          cp -r src dist/package/
+          cd dist/package && zip -r ../lambda.zip . -q
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::620455725922:role/automation-deployer-role
+          aws-region: ap-northeast-2
+
+      - name: Upload to S3
+        run: |
+          aws s3 cp dist/lambda.zip \
+            s3://barlow-deploy-bucket/barlow/automation/lambda-${{ github.sha }}.zip
+
+      - name: Deploy Ack Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name barlow-slack-ack \
+            --s3-bucket barlow-deploy-bucket \
+            --s3-key barlow/automation/lambda-${{ github.sha }}.zip
+
+      - name: Deploy Worker Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name barlow-automation-worker \
+            --s3-bucket barlow-deploy-bucket \
+            --s3-key barlow/automation/lambda-${{ github.sha }}.zip
+
+      - name: Update Parameter Store
+        run: |
+          aws ssm put-parameter \
+            --name /barlow/deploy/current-key \
+            --value "barlow/automation/lambda-${{ github.sha }}.zip" \
+            --type String --overwrite
+
+          aws ssm put-parameter \
+            --name /barlow/deploy/current-sha \
+            --value "${{ github.sha }}" \
+            --type String --overwrite

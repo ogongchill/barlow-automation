@@ -1,330 +1,255 @@
-# AWS 인프라 설정 가이드
+# Barlow Automation — 인프라 설계 문서
 
-barlow-automation 배포에 필요한 AWS 리소스 목록 및 설정값 정리.
-
----
-
-## 리소스 구성 요약
-
-```
-Slack App
-    │ HTTPS (Function URL)
-    ▼
-Ack Lambda (Function URL)  ──────────► SQS Queue (barlow-queue)
-(src/controller/lambda_ack.py)                  │
-                                                 ▼
-                                       Worker Lambda
-                                       (src/lambda_worker.py)
-                                            │         │
-                                            ▼         ▼
-                                     DynamoDB      DynamoDB
-                                   barlow-pending  barlow-idempotency
-```
+Terraform 작성자를 위한 리소스 설계 문서.
+실제 코드는 이 문서를 기반으로 작성한다.
 
 ---
 
-## 1. DynamoDB 테이블
-
-### `barlow-pending`
-
-이슈 초안 대기 레코드 저장 (사용자 검토 중인 이슈 컨텍스트).
-
-| 항목 | 값 |
-|------|-----|
-| 테이블 이름 | `barlow-pending` |
-| 파티션 키 | `pk` (String) — Slack message_ts |
-| 정렬 키 | 없음 |
-| TTL 속성 | `ttl` (Number) — Unix timestamp, 24시간 후 자동 삭제 |
-| 용량 모드 | On-Demand (PAY_PER_REQUEST) |
-| 암호화 | AWS 관리 키 (기본값) |
-
-**액세스 패턴**
-
-| 작업 | 조건 |
-|------|------|
-| PutItem | 이슈 초안 저장 (pipeline_start, rotate) |
-| GetItem | pk = message_ts |
-| DeleteItem | pk = message_ts |
-| TransactWriteItems | 새 레코드 PutItem + 기존 레코드 DeleteItem (rotate) |
-
-**속성 목록**
+## 전체 아키텍처
 
 ```
-pk              String    Slack message_ts (PK)
-subcommand      String    "feat" | "refactor" | "fix"
-user_id         String    Slack user ID
-channel_id      String    Slack channel ID
-user_message    String    Modal 입력 to_prompt() 결과
-inspector_output String   Inspector Agent 출력 JSON
-typed_output    String    이슈 템플릿 JSON (FeatTemplate 등)
-ttl             Number    Unix timestamp (TTL 속성)
+Slack
+  │ slash command / modal submit / button click
+  ▼
+Lambda Function URL (barlow-slack-ack)          ← 29초 타임아웃 (Slack 3초 ack 제한)
+  │ Slack 서명 검증 (Bolt)
+  │ SQS 메시지 전송
+  ▼
+SQS Queue (barlow-queue)
+  │ trigger (batch size = 1)
+  ▼
+Lambda (barlow-automation-worker)                    ← 900초 타임아웃 (AI agent 실행)
+  │ DynamoDB read/write
+  │ Slack API 호출
+  │ GitHub REST API 호출
+  ▼
+DynamoDB (3개 테이블)
 ```
 
 ---
 
-### `barlow-idempotency`
+## Lambda
 
-SQS 메시지 중복 처리 방지 (dedup_id 기반).
+### barlow-slack-ack
 
 | 항목 | 값 |
 |------|-----|
-| 테이블 이름 | `barlow-idempotency` |
-| 파티션 키 | `pk` (String) — dedup_id (view_id 또는 action_ts) |
-| 정렬 키 | 없음 |
-| TTL 속성 | `ttl` (Number) — Unix timestamp, 1시간 후 자동 삭제 |
-| 용량 모드 | On-Demand (PAY_PER_REQUEST) |
-| 암호화 | AWS 관리 키 (기본값) |
+| Runtime | python3.12 |
+| Handler | `src.controller.lambda_ack.handler` |
+| Timeout | **29초** (Slack 요구사항 — 3초 내 ack, 나머지는 SQS로 위임) |
+| Memory | 256 MB |
+| Trigger | Lambda Function URL |
+| Function URL auth | NONE (Slack 서명 검증을 Bolt 미들웨어가 담당) |
 
-**액세스 패턴**
+환경변수:
+- `SLACK_BOT_TOKEN`
+- `SLACK_SIGNING_SECRET`
+- `SQS_QUEUE_URL`
+- `GITHUB_TOKEN`
+- `TARGET_REPO`
 
-| 작업 | 조건 |
-|------|------|
-| PutItem (조건부) | `attribute_not_exists(pk)` — 중복 시 ConditionalCheckFailedException |
-| UpdateItem | pk = dedup_id, status → "DONE" |
+### barlow-automation-worker
 
-**속성 목록**
+| 항목 | 값 |
+|------|-----|
+| Runtime | python3.12 |
+| Handler | `src.app.handlers.step_worker_handler.handler` |
+| Timeout | **900초** (AI agent + GitHub MCP 호출 포함, 최대 15분) |
+| Memory | 512 MB |
+| Trigger | SQS (barlow-queue) |
 
-```
-pk      String    dedup_id (PK)
-status  String    "PROCESSING" | "DONE"
-ttl     Number    Unix timestamp (TTL 속성)
-```
+환경변수:
+- `SLACK_BOT_TOKEN`
+- `SLACK_SIGNING_SECRET`
+- `SQS_QUEUE_URL`
+- `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `GITHUB_TOKEN`
+- `TARGET_REPO`
+
+### 코드 배포 방식
+
+Terraform은 Lambda **설정만** 관리한다. 코드 배포는 GitHub Actions가 담당.
+
+- 최초 `terraform apply` 시 placeholder zip으로 함수 생성
+- 이후 Actions가 `update-function-code`로 실제 코드 교체
+- Terraform이 코드 변경에 반응하지 않도록 `lifecycle.ignore_changes` 적용 필요
+  - 대상: `filename`, `source_code_hash`
 
 ---
 
-## 2. SQS 큐
+## SQS
+
+### barlow-queue (메인 큐)
+
+| 항목 | 값 | 이유 |
+|------|-----|------|
+| Visibility Timeout | **900초** | Worker Lambda timeout과 반드시 동일해야 함. 짧으면 처리 중인 메시지가 재전송됨 |
+| Message Retention | 86400초 (24h) | 워크플로우 최대 수명 기준 |
+| Batch Size (Event Source) | **1** | 멱등성 보장 필수. 2 이상이면 동일 워크플로우가 병렬 실행될 수 있음 |
+| DLQ | barlow-queue-dlq 연결 | maxReceiveCount = 2 |
+
+### barlow-queue-dlq (Dead Letter Queue)
 
 | 항목 | 값 |
 |------|-----|
-| 큐 이름 | `barlow-queue` |
-| 큐 타입 | Standard (순서 보장 불필요) |
-| Visibility Timeout | 900초 (15분 — Worker Lambda 최대 실행 시간과 동일) |
-| Message Retention | 86400초 (24시간) |
-| Dead Letter Queue | `barlow-queue-dlq` 연결 권장 (maxReceiveCount: 2) |
-
-**DLQ 설정 (`barlow-queue-dlq`)**
-
-| 항목 | 값 |
-|------|-----|
-| 큐 타입 | Standard |
 | Message Retention | 1209600초 (14일) |
 
-> Visibility Timeout은 Worker Lambda timeout 이상이어야 합니다.
-> Lambda가 처리 중인 메시지가 다시 큐에 노출되어 중복 실행되는 것을 방지합니다.
+DLQ 메시지 = 2회 처리 실패한 이벤트. 수동 확인 후 재처리 또는 폐기.
 
 ---
 
-## 3. Lambda 함수
+## DynamoDB
 
-### Ack Lambda
+### barlow-workflow
+
+워크플로우 인스턴스 저장. 각 사용자 요청당 하나의 레코드.
 
 | 항목 | 값 |
 |------|-----|
-| 함수 이름 | `barlow-ack` |
-| 진입점 | `src/controller/lambda_ack.handler` |
-| 런타임 | Python 3.12 |
-| 메모리 | 256 MB |
-| 타임아웃 | 29초 (Slack 3초 응답 + 여유) |
-| 트리거 | Lambda Function URL |
+| PK | `workflow_id` (String) |
+| Billing | PAY_PER_REQUEST |
+| TTL | `ttl` 컬럼 (Unix timestamp, 생성 시 +24h) |
 
-**환경 변수**
+### barlow-pending-action
 
-```
-SLACK_BOT_TOKEN       xoxb-...
-SLACK_SIGNING_SECRET  ...
-OPENAI_API_KEY        sk-...
-ANTHROPIC_API_KEY     sk-ant-...
-GITHUB_TOKEN          ghp_...
-SQS_QUEUE_URL         https://sqs.<region>.amazonaws.com/<account-id>/barlow-queue
-TARGET_REPO           owner/repo
-```
-
-**IAM 권한**
-
-```json
-{
-  "Effect": "Allow",
-  "Action": [
-    "sqs:SendMessage"
-  ],
-  "Resource": "arn:aws:sqs:<region>:<account-id>:barlow-queue"
-}
-```
-
----
-
-### Worker Lambda
+SQS 이벤트 멱등성 처리. 동일 메시지 중복 처리 방지.
 
 | 항목 | 값 |
 |------|-----|
-| 함수 이름 | `barlow-worker` |
-| 진입점 | `src/lambda_worker.handler` |
-| 런타임 | Python 3.12 |
-| 메모리 | 512 MB |
-| 타임아웃 | 900초 (15분) |
-| 트리거 | SQS (barlow-queue), batch size: 1 |
+| PK | `pk` (String) — dedup_id (Slack view_id 또는 action_ts) |
+| Billing | PAY_PER_REQUEST |
+| TTL | `ttl` 컬럼 (Unix timestamp, 생성 시 +1h) |
 
-**환경 변수** (Ack Lambda와 동일)
+핵심 동작: `attribute_not_exists(pk)` 조건부 PutItem. 이미 존재하면 중복 처리 skip.
 
-```
-SLACK_BOT_TOKEN
-SLACK_SIGNING_SECRET
-OPENAI_API_KEY
-ANTHROPIC_API_KEY
-GITHUB_TOKEN
-SQS_QUEUE_URL
-TARGET_REPO
-```
+### barlow-active-session
 
-**IAM 권한**
-
-```json
-[
-  {
-    "Effect": "Allow",
-    "Action": [
-      "sqs:ReceiveMessage",
-      "sqs:DeleteMessage",
-      "sqs:GetQueueAttributes"
-    ],
-    "Resource": "arn:aws:sqs:<region>:<account-id>:barlow-queue"
-  },
-  {
-    "Effect": "Allow",
-    "Action": [
-      "dynamodb:PutItem",
-      "dynamodb:GetItem",
-      "dynamodb:DeleteItem",
-      "dynamodb:UpdateItem",
-      "dynamodb:TransactWriteItems"
-    ],
-    "Resource": [
-      "arn:aws:dynamodb:<region>:<account-id>:table/barlow-pending",
-      "arn:aws:dynamodb:<region>:<account-id>:table/barlow-idempotency"
-    ]
-  }
-]
-```
-
-> SQS 트리거의 `batch size: 1` 설정이 중요합니다.
-> 하나의 Lambda 실행이 하나의 SQS 메시지만 처리하도록 보장하여
-> 멱등성 로직이 정확히 동작합니다.
-
----
-
-## 4. Lambda Function URL (Ack Lambda)
-
-API Gateway 없이 Lambda에 직접 HTTPS 엔드포인트를 부여합니다.
+채널+유저 단위 활성 워크플로우 추적. 동일 사용자가 같은 채널에서 워크플로우를 중복 시작하지 못하게 막음.
 
 | 항목 | 값 |
 |------|-----|
-| Auth 타입 | `NONE` — Slack 서명 검증은 Bolt 미들웨어가 처리 |
-| CORS | 비활성화 (Slack 서버가 직접 호출, 브라우저 아님) |
-| URL 형식 | `https://<url-id>.lambda-url.<region>.on.aws/` |
-
-**이벤트 형식 (Lambda Function URL v2)**
-
-```json
-{
-  "version": "2.0",
-  "requestContext": {
-    "http": {
-      "method": "POST",
-      "path": "/"
-    }
-  },
-  "headers": {
-    "content-type": "application/x-www-form-urlencoded",
-    "x-slack-request-timestamp": "...",
-    "x-slack-signature": "v0=..."
-  },
-  "body": "command=%2Ffeat&...",
-  "isBase64Encoded": false
-}
-```
-
-Bolt의 `AsyncBoltRequest`가 `body`와 `headers`를 직접 추출하므로
-API Gateway 없이도 동작합니다.
+| PK | `pk` (String) — `{channel_id}#{user_id}` |
+| Billing | PAY_PER_REQUEST |
+| TTL | `ttl` 컬럼 (Unix timestamp, 생성 시 +24h) |
 
 ---
 
-## 5. Slack 앱 설정
+## IAM
 
-Function URL 발급 후 [Slack API 콘솔](https://api.slack.com/apps)에서 설정.
+### barlow-slack-ack-role
 
-### Interactivity & Shortcuts
+barlow-slack-ack Lambda 실행 역할.
 
-```
-Request URL: https://<url-id>.lambda-url.<region>.on.aws/
-```
+필요 권한:
+- `sqs:SendMessage` — barlow-queue ARN 한정
+- `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:PutLogEvents`
 
-Modal 제출, Block Action 버튼 클릭 이벤트를 수신합니다.
+### barlow-automation-worker-role
 
-### Slash Commands
+barlow-automation-worker Lambda 실행 역할.
 
-각 커맨드마다 동일한 Request URL 등록.
+필요 권한:
+- `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` — barlow-queue ARN 한정
+- `dynamodb:PutItem`, `dynamodb:GetItem`, `dynamodb:DeleteItem`, `dynamodb:UpdateItem` — 3개 테이블 ARN 한정
+- `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:PutLogEvents`
 
-| Command | Request URL |
-|---------|-------------|
-| `/feat` | `https://<url-id>.lambda-url.<region>.on.aws/` |
-| `/refactor` | 동일 |
-| `/fix` | 동일 |
+### barlow-deployer-role
 
-### OAuth Scopes (Bot Token)
+GitHub Actions OIDC용 역할. 시크릿 키 없이 assume.
 
-| Scope | 용도 |
-|-------|------|
-| `commands` | 슬래시 커맨드 수신 |
-| `chat:write` | 메시지 전송 및 업데이트 |
-| `views:open` | Modal 오픈 |
-| `views:push` | Modal 스택 추가 |
+Trust Policy 조건:
+- Federated: GitHub OIDC Provider (`token.actions.githubusercontent.com`)
+- `aud`: `sts.amazonaws.com`
+- `sub`: `repo:{org}/{repo}:ref:refs/heads/master` (master 브랜치 push만 허용)
 
----
+필요 권한:
+- `s3:PutObject` — `barlow-deploy-bucket/barlow/automation/*` 한정
+- `lambda:UpdateFunctionCode`, `lambda:GetFunction` — barlow-slack-ack, barlow-automation-worker ARN 한정
+- `ssm:PutParameter` — `/barlow/deploy/*` 한정
 
-## 6. Secrets Manager (선택)
+OIDC Provider 설정값:
+- URL: `https://token.actions.githubusercontent.com`
+- Client ID: `sts.amazonaws.com`
+- Thumbprint: `6938fd4d98bab03faadb97b34396831e3780aea1`
 
-환경 변수에 민감 정보를 직접 넣는 대신 AWS Secrets Manager 사용 권장.
-
-| 시크릿 이름 | 포함 키 |
-|------------|--------|
-| `barlow/slack` | `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` |
-| `barlow/ai` | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` |
-| `barlow/github` | `GITHUB_TOKEN` |
-
-Lambda 실행 역할에 `secretsmanager:GetSecretValue` 권한 추가 필요.
+> 동일 AWS 계정에 GitHub OIDC Provider가 이미 등록되어 있으면 중복 생성 불가. 기존 Provider를 data source로 참조할 것.
 
 ---
 
-## 7. 배포 체크리스트
+## S3 (배포 아티팩트)
 
+버킷: `barlow-deploy-bucket` (기존 버킷 재사용 — Terraform으로 새로 생성하지 않음)
+
+| 항목 | 값 |
+|------|-----|
+| Versioning | 불필요 (key에 SHA 포함으로 버전 관리) |
+| 배포 경로 | `barlow/automation/lambda-{git-sha}.zip` |
+
+커밋마다 별도 파일로 쌓이므로 S3 Versioning 없이도 전체 배포 이력이 유지됨.
+오래된 파일은 S3 Lifecycle 정책으로 주기적 삭제 권장 (예: 30일 이상 된 `barlow/automation/lambda-*.zip`).
+
+---
+
+## Parameter Store (배포 상태 포인터)
+
+현재 Lambda에 배포된 버전을 추적하는 포인터. Terraform이 읽지 않으며 배포 상태 확인 및 롤백 용도로만 사용.
+
+| Parameter | Type | 값 예시 |
+|-----------|------|--------|
+| `/barlow/deploy/current-key` | String | `barlow/automation/lambda-f648d7c.zip` |
+| `/barlow/deploy/current-sha` | String | `f648d7c...` |
+
+GitHub Actions가 Lambda 배포 완료 후 자동 업데이트.
+
+**롤백 절차:**
+```bash
+# 1. 현재 배포 확인
+aws ssm get-parameter --name /barlow/deploy/current-sha
+
+# 2. S3에서 이전 버전 목록 확인
+aws s3 ls s3://barlow-deploy-bucket/barlow/automation/
+
+# 3. Lambda에 이전 버전 반영 (핵심 — Parameter Store만 바꿔서는 Lambda에 반영 안 됨)
+OLD_SHA="이전커밋SHA"
+aws lambda update-function-code \
+  --function-name barlow-slack-ack \
+  --s3-bucket barlow-deploy-bucket \
+  --s3-key barlow/automation/lambda-${OLD_SHA}.zip
+
+aws lambda update-function-code \
+  --function-name barlow-automation-worker \
+  --s3-bucket barlow-deploy-bucket \
+  --s3-key barlow/automation/lambda-${OLD_SHA}.zip
+
+# 4. Parameter Store 동기화 (추적 목적)
+aws ssm put-parameter --name /barlow/deploy/current-sha --value $OLD_SHA --overwrite
 ```
-[ ] DynamoDB 테이블 2개 생성 (barlow-pending, barlow-idempotency)
-    [ ] TTL 활성화 (ttl 속성 지정)
 
-[ ] SQS 큐 생성 (barlow-queue)
-    [ ] Visibility Timeout = 900초
-    [ ] DLQ 연결 (barlow-queue-dlq, maxReceiveCount: 2)
+---
 
-[ ] Lambda 함수 2개 배포
-    [ ] barlow-ack (진입점: src/controller/lambda_ack.handler)
-    [ ] barlow-worker (진입점: src/lambda_worker.handler)
-    [ ] 환경 변수 설정
-    [ ] IAM 역할 및 정책 연결
+## CloudWatch Logs
 
-[ ] Ack Lambda Function URL 활성화
-    [ ] Auth 타입: NONE
-    [ ] URL 확인 (https://<url-id>.lambda-url.<region>.on.aws/)
+| 로그 그룹 | Retention |
+|----------|-----------|
+| `/aws/lambda/barlow-slack-ack` | 14일 |
+| `/aws/lambda/barlow-automation-worker` | 30일 (AI agent 트레이스 포함) |
 
-[ ] SQS 트리거 등록
-    [ ] barlow-queue → barlow-worker (batch size: 1)
+---
 
-[ ] Slack 앱 설정
-    [ ] Interactivity Request URL → Function URL 등록
-    [ ] Slash Commands Request URL 등록 (/feat, /refactor, /fix)
-    [ ] Bot OAuth Scopes 확인 및 앱 재설치
+## 주요 제약 및 주의사항
 
-[ ] 동작 확인
-    [ ] /feat 커맨드 → Modal 오픈
-    [ ] Modal 제출 → SQS 메시지 전송 확인 (CloudWatch Logs)
-    [ ] Worker Lambda 실행 → Slack 메시지 수신
-```
+**SQS Visibility Timeout = Lambda Timeout**
+두 값이 다르면 장애 발생. Lambda가 처리 중인데 메시지가 다시 큐에 나타나 중복 실행됨.
+
+**SQS Batch Size = 1**
+멱등성 처리(barlow-pending-action)가 메시지 단위로 동작함. 2 이상이면 같은 워크플로우가 병렬로 실행될 수 있음.
+
+**Lambda Function URL**
+barlow-slack-ack만 Function URL이 필요함. barlow-automation-worker는 SQS 트리거만 사용.
+
+**Terraform이 코드를 관리하지 않음**
+`lifecycle.ignore_changes`로 코드 관련 속성을 무시해야 함. 그렇지 않으면 `terraform plan`마다 코드 변경을 감지해 덮어씀.
+
+**GitHub OIDC Provider 중복 주의**
+AWS 계정당 동일 URL의 OIDC Provider는 하나만 존재 가능. 기존에 등록된 경우 `data "aws_iam_openid_connect_provider"`로 참조.
