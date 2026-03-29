@@ -6,6 +6,7 @@ on:
     paths:
       - 'src/**'
       - 'requirements-deploy.txt'
+      - 'requirements-ack.txt'
   workflow_dispatch:
 
 permissions:
@@ -14,7 +15,8 @@ permissions:
 
 env:
   S3_BUCKET: barlow-deploy-bucket
-  S3_KEY: automation/lambda-${{ github.sha }}.zip
+  S3_KEY_ACK: automation/ack-${{ github.sha }}.zip
+  S3_KEY_WORKER: automation/worker-${{ github.sha }}.zip
 
 jobs:
   deploy:
@@ -29,15 +31,25 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Build package
+      - name: Build Ack Lambda package
         run: |
-          mkdir -p dist/package
-          pip install -r requirements-deploy.txt -t dist/package/ \
+          mkdir -p dist/ack
+          pip install -r requirements-ack.txt -t dist/ack/ \
             --platform manylinux2014_aarch64 \
             --only-binary=:all: \
             --quiet
-          cp -r src dist/package/
-          cd dist/package && zip -r ../lambda.zip . -q
+          cp -r src dist/ack/
+          cd dist/ack && zip -r ../ack.zip . -q
+
+      - name: Build Worker Lambda package
+        run: |
+          mkdir -p dist/worker
+          pip install -r requirements-deploy.txt -t dist/worker/ \
+            --platform manylinux2014_aarch64 \
+            --only-binary=:all: \
+            --quiet
+          cp -r src dist/worker/
+          cd dist/worker && zip -r ../worker.zip . -q
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -46,27 +58,33 @@ jobs:
 
       - name: Upload to S3
         run: |
-          aws s3 cp dist/lambda.zip s3://${{ env.S3_BUCKET }}/${{ env.S3_KEY }}
+          aws s3 cp dist/ack.zip    s3://${{ env.S3_BUCKET }}/${{ env.S3_KEY_ACK }}
+          aws s3 cp dist/worker.zip s3://${{ env.S3_BUCKET }}/${{ env.S3_KEY_WORKER }}
 
       - name: Deploy Ack Lambda
         run: |
           aws lambda update-function-code \
             --function-name barlow-slack-ack \
             --s3-bucket ${{ env.S3_BUCKET }} \
-            --s3-key ${{ env.S3_KEY }}
+            --s3-key ${{ env.S3_KEY_ACK }}
 
       - name: Deploy Worker Lambda
         run: |
           aws lambda update-function-code \
             --function-name barlow-automation-worker \
             --s3-bucket ${{ env.S3_BUCKET }} \
-            --s3-key ${{ env.S3_KEY }}
+            --s3-key ${{ env.S3_KEY_WORKER }}
 
       - name: Update Parameter Store
         run: |
           aws ssm put-parameter \
-            --name /automation/deploy/current-key \
-            --value "${{ env.S3_KEY }}" \
+            --name /automation/deploy/current-key-ack \
+            --value "${{ env.S3_KEY_ACK }}" \
+            --type String --overwrite
+
+          aws ssm put-parameter \
+            --name /automation/deploy/current-key-worker \
+            --value "${{ env.S3_KEY_WORKER }}" \
             --type String --overwrite
 
           aws ssm put-parameter \
