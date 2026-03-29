@@ -10,7 +10,7 @@
 
 ---
 
-## 실측 수치 (기준선 — 2025-03-29)
+## 기준선 (Before — 2026-03-29)
 
 ### Cold start (n=2)
 
@@ -36,144 +36,131 @@
 | Warm start | — | 316ms | **316ms** |
 | 차이 | +908ms | +334ms | **+1,242ms** |
 
-Init Duration 편차: ±10ms → **패키지 크기 기반, 재현 가능**
-Handler cold 오버헤드: +334ms → boto3 첫 TCP connection 비용
-
-**cold/warm Handler 차이: +334ms**
-→ cold start 시 boto3 첫 TCP connection(SQS/DynamoDB) 비용 포함.
-warm start에서는 connection이 재사용되어 사라진다.
+Init Duration 편차 ±10ms → 패키지 크기 기반, 재현 가능한 수치
 
 ---
 
-## Slack이 경험하는 실제 latency
+## 문제 분석
+
+### Slack 3초 제약과의 관계
 
 ```
-Slack → api.slack.com → Function URL → Lambda → 응답
-
 warm: 316ms + 네트워크 ~150ms  = ~466ms    ✓ 안전
-cold: 1558ms + 네트워크 ~150ms = ~1708ms  △ margin 1.3초
+cold: 1558ms + 네트워크 ~150ms = ~1708ms   △ margin 1.3초
 ```
 
-현재는 3초 이내이나 Slack API 응답(views_open)이 300ms 이상 지연되면
-cold start 총합이 2초를 초과할 수 있다.
+Slack API(views_open) 응답이 300ms 이상 지연되면 cold start 총합이 2초를 초과한다.
 
----
-
-## 문제 구조
+### 근본 구조
 
 ```
-월 30회 호출 → 호출 간격이 길다 → 대부분 cold start
-cold start (~1,708ms) → Slack 3초 초과 위험 → timeout → retry → dedup 필요
+월 30회 호출 → 호출 간격 길다 → 대부분 cold start
+cold start → Slack 3초 초과 위험 → timeout → retry → dedup 필요
 ```
 
-dedup 레이어(pending-action, active-session)가 존재하는 근본 원인 중 하나가
-cold start로 인한 Slack retry다.
+dedup 레이어(pending-action, active-session)가 존재하는 근본 원인 중 하나가 cold start다.
 
----
-
-## 구조적 결합 문제
-
-Lambda 진입점이 Slack Bolt에 종속되어 있다.
-
-```python
-# lambda_ack.py — 현재
-def handler(event: dict, context) -> dict:
-    return asyncio.run(_dispatch(event))  # 모든 이벤트가 Bolt를 통과
-```
-
-- EventBridge keep-warm ping을 보내도 Bolt 서명 검증에서 차단됨
-- k6 측정 요청이 Slack API(views_open) 호출을 유발해 latency 오염
-- 진입점에서 Slack 이벤트와 운영 이벤트를 구분하지 못함
-
----
-
-## Handler Duration 분해 추정
+### Handler Duration 분해
 
 ```
-cold handler 650ms (평균):
+cold handler 650ms:
   views_open (Slack API):        ~200ms
   SQS send (첫 TCP connection):  ~300ms   ← warm 대비 ~3배
   routing / ack:                 ~150ms
 
-warm handler 316ms (평균):
+warm handler 316ms:
   views_open (Slack API):        ~180ms
   SQS send (connection 재사용):  ~100ms
   routing / ack:                  ~36ms
 ```
 
----
-
-## 최적화 목표
-
-| 항목 | 현재 | 목표 | 수단 |
-|---|---|---|---|
-| Init Duration | 918ms | < 400ms | lazy import |
-| Cold start 빈도 | 대부분 | 낮춤 | EventBridge keep-warm |
-| Lambda 진입점 결합 | Bolt 종속 | 이벤트 유형 분기 | handler 분리 |
+cold handler의 SQS 오버헤드 +200ms는 boto3 첫 TCP connection 비용이다.
 
 ---
 
-## 구현 계획
+## 최적화 과정
 
-### Step 1 — Lambda 진입점 분리
+### Step 1 — Lambda 진입점 분리 (완료)
 
-Slack 이벤트와 운영 이벤트를 진입점에서 분기한다.
+**문제**: Lambda 진입점이 Slack Bolt에 종속되어 있어 EventBridge ping이 서명 검증에 막힌다.
 
 ```python
-def handler(event: dict, context) -> dict:
-    # EventBridge keep-warm ping
-    if event.get("source") == "aws.events":
-        logger.info("keep-warm ping")
-        return {"statusCode": 200, "body": "warm"}
+# Before — 모든 이벤트가 Bolt를 통과
+def handler(event, context):
+    return asyncio.run(_dispatch(event))
 
-    # Slack HTTP 이벤트만 Bolt로 디스패치
+# After — 이벤트 유형별 분기
+def handler(event, context):
+    if event.get("source") == "aws.events":
+        _get_app()  # Bolt 초기화까지 완료
+        return {"statusCode": 200, "body": "warm"}
     return asyncio.run(_dispatch(event))
 ```
 
-효과:
-- keep-warm ping이 Bolt 우회 → Lambda는 warm 상태 유지
-- k6 헬스체크 엔드포인트도 같은 방식으로 추가 가능
-- Slack 결합을 진입점 바깥으로 밀어냄
+**Lazy init 병행 적용**: 모듈 레벨 Bolt/boto3 초기화를 `_get_app()`으로 지연.
+ping이 `_get_app()`을 호출해 Bolt 초기화까지 완료하므로 이후 Slack 요청은 warm handler(316ms)만 소요.
 
-### Step 2 — Lazy Import
+커밋: `83058ea`
 
-모듈 레벨에서 발생하는 Init Duration 918ms의 주요 원인을 분석하고 지연 로딩으로 줄인다.
+---
 
-```python
-# 현재 — 모듈 import 시 즉시 실행
-from slack_bolt.async_app import AsyncApp
-slash.configure(
-    workflow_repo=DynamoWorkflowInstanceStore(),  # boto3 클라이언트 생성
-    ...
-)
-_app = create_app()
-register(_app)
+### Step 2 — 패키지 분리 (완료)
 
-# 목표 — 첫 Slack 이벤트 도착 시 초기화 (keep-warm ping 이후)
-_app: AsyncApp | None = None
+**문제**: Ack Lambda와 Worker Lambda가 동일한 zip을 사용.
+Ack Lambda에 불필요한 AI SDK가 포함되어 패키지가 비대함.
 
-def _get_app() -> AsyncApp:
-    global _app
-    if _app is None:
-        _app = _initialize()
-    return _app
+**원인 분석 — import 체인 추적:**
+
+```
+Ack Lambda import 체인:
+  slack_bolt, boto3, pydantic, src.controller.*, src.domain.common.*
+  → AI SDK (openai-agents, mcp) 미사용
+
+Worker Lambda import 체인:
+  + src.domain.feat.executor
+      → from agents import Agent        ← openai-agents
+      → from src.agent.mcp import ...   ← mcp
 ```
 
-효과:
-- keep-warm ping은 Python 런타임 + 모듈 import만 실행하고 반환
-- 실제 Slack 이벤트 첫 처리 시 초기화 → 이후 warm에서 재사용
-- Init Duration 목표: 918ms → 400ms 이하
+**패키지 크기 측정:**
 
-### Step 3 — EventBridge Scheduled Ping
+```bash
+전체 패키지 (requirements-deploy.txt): 90MB
+Ack 전용  (requirements-ack.txt):      11MB  → 87% 감소
 
-5분 간격으로 Lambda를 깨운다.
+주요 제거 대상:
+  openai:       13MB
+  agents:        4MB
+  cryptography: 9.8MB  (openai 의존성)
+  mcp:           1.8MB
+```
+
+**해결:**
+
+```
+requirements-ack.txt    requirements-deploy.txt (Worker용)
+  slack-bolt              slack-bolt
+  python-dotenv           openai-agents
+  aiohttp                 mcp
+                          python-dotenv
+                          aiohttp
+```
+
+deploy.yml을 수정해 Ack / Worker 패키지를 별도 빌드 후 각 Lambda에 독립 배포.
+
+커밋: `852201b`
+
+---
+
+### Step 3 — EventBridge Keep-warm (미완료)
+
+5분 간격 ping으로 cold start 빈도를 낮춘다. Terraform 리소스 추가 필요.
 
 ```hcl
 resource "aws_cloudwatch_event_rule" "keep_warm" {
   name                = "barlow-ack-keep-warm"
   schedule_expression = "rate(5 minutes)"
 }
-
 resource "aws_cloudwatch_event_target" "keep_warm" {
   rule      = aws_cloudwatch_event_rule.keep_warm.name
   target_id = "AckLambdaKeepWarm"
@@ -181,39 +168,27 @@ resource "aws_cloudwatch_event_target" "keep_warm" {
 }
 ```
 
-효과:
-- 5분 이내 재호출이면 항상 warm 상태
-- 월 30회 실사용 기준 ping 비용: ~8,640회/월 → Lambda 무료 티어 내 $0
-- cold start 빈도: 거의 0% (Lambda 최대 idle 시간 > 5분이면 cold)
+비용: 월 8,640회 ping → Lambda 무료 티어 내 $0
 
 ---
 
-## Before / After 비교 기준
+## After 측정 (진행 중)
 
-| 측정 항목 | Before | After 목표 |
-|---|---|---|
-| Init Duration | 918ms | < 400ms |
-| Cold start 총합 | 1,558ms | < 600ms |
-| Slack 경험 latency (cold) | ~1,708ms | < 750ms |
-| Cold start 빈도 | 높음 (~100%) | < 5% |
+Step 1, 2 배포 완료. 측정 대기.
+
+| 측정 항목 | Before | After 목표 | After 실측 |
+|---|---|---|---|
+| Init Duration | 908ms | < 400ms | 측정 중 |
+| Cold start 총합 | 1,558ms | < 700ms | 측정 중 |
+| Slack 경험 latency (cold) | ~1,708ms | < 850ms | 측정 중 |
+| 패키지 크기 | 90MB | — | 11MB ✓ |
 
 ---
 
 ## 측정 방법
 
-```
-[Before 기준선]
-1. Lambda cold 상태 확보 (15분 방치 or 배포 직후)
-2. k6 run k6/ack_lambda.js → HTTP 응답 시간 분포 기록
-3. CloudWatch Logs Insights → Init Duration / Handler Duration 기록
+**CloudWatch Logs Insights:**
 
-[After 검증]
-4. Step 1~3 구현 후 배포
-5. 동일 절차 반복
-6. 수치 비교
-```
-
-CloudWatch Logs Insights 쿼리:
 ```
 fields @timestamp, @duration, @initDuration
 | filter @type = "REPORT"
@@ -224,8 +199,8 @@ fields @timestamp, @duration, @initDuration
     avg(@duration)                 as avg_handler_ms
 ```
 
-
-문제: 월 30회 희소 트래픽 → 대부분 cold start → Slack timeout 위험
-해결 1: EventBridge 5분 ping → cold start 빈도 0%에 가깝게
-해결 2: Lazy import → cold start 발생해도 908ms → ~400ms
-결과: Slack 경험 latency 1,708ms → ~600ms
+**절차:**
+1. Lambda cold 상태 확보 (15분 방치 or 배포 직후)
+2. Slack `/feat` 커맨드 실행
+3. CloudWatch REPORT 로그 확인 → Init Duration / Handler Duration 기록
+4. Step 3 완료 후 동일 절차 반복
